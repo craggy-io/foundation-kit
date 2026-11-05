@@ -2,7 +2,7 @@
 
 Foundation Kit is a set of Go packages for building applications and libraries on shared foundations. It's for the things every application otherwise writes for itself, starting with loading authored content such as scripts, prompts and schemas.
 
-> **Status: early development.** The packages exist and compile, but nothing is released yet, and the main entry point, `bundle.Load`, is still a stub. See [Packages](#packages) for what works today.
+> **Status: early development.** The packages work, but nothing is released yet and the API will change until there is. No consumer has been migrated to `bundle` yet. See [Packages](#packages) for what works today.
 
 ## The problem it solves
 
@@ -90,11 +90,11 @@ Nothing in the kit knows about any product. If a package needs a word like "lab"
 | Package | Layer | Purpose | Status |
 | --- | --- | --- | --- |
 | [`kind`](kind/README.md) | Contracts | Versioned types of definition, with optional schemas and built-ins | Working |
-| [`bundle`](bundle/README.md) | Engines | Loads bundles and built-ins into one catalog | Stub: `Load` isn't implemented |
-| `bundle/compile` | Extensions | Ready-made compilers for text, JSON and YAML | Text and JSON work, YAML is a stub |
-| `kind/jsonschema` | Extensions | JSON Schema support for kinds | Stub |
+| [`bundle`](bundle/README.md) | Engines | Loads bundles and built-ins into one catalog | Working, not yet used by a consumer |
+| `bundle/compile` | Extensions | Ready-made compilers for text, JSON and YAML | Working |
+| `kind/jsonschema` | Extensions | JSON Schema support for kinds | Working |
 | [`settings`](settings/README.md) | Engines | Live, user-editable values, declared by the code that reads them | Working |
-| `bundle/bundletest` | Test support | Helpers for testing kinds, compilers and bundles | Depends on `Load` |
+| `bundle/bundletest` | Test support | Helpers for testing kinds, compilers and bundles | Working |
 | [`archtest`](archtest/README.md) | Test support | Turns architecture rules into test failures | Working |
 
 We also expect to add packages for lifecycle management, logging and an HTTP server. None of them exist yet, and each will be added once real applications need it.

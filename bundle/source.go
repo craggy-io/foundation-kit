@@ -3,6 +3,7 @@ package bundle
 import (
 	"context"
 	"io/fs"
+	"os"
 )
 
 // Source supplies the files for exactly one bundle. The root of the file system it
@@ -35,13 +36,18 @@ type dirSource struct{ path string }
 
 func (s dirSource) Origin() string { return s.path }
 
-// Open returns the directory as a file system.
-//
-// TODO: implement with os.OpenRoot rather than a bare os.DirFS, which can follow a
-// symlink out of the directory. Return the os.Root's Close method as closeFn.
-// internal/snapshot still rejects symlinks either way.
+// Open returns the directory as a file system, through os.OpenRoot so that no path
+// can resolve outside it, even through a symlink. Load rejects symlinks anyway, and
+// each Asset read opens the directory again.
 func (s dirSource) Open(ctx context.Context) (fs.FS, func() error, error) {
-	return nil, nil, ErrNotImplemented
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	root, err := os.OpenRoot(s.path)
+	if err != nil {
+		return nil, nil, err
+	}
+	return root.FS(), root.Close, nil
 }
 
 // Embedded returns a Source for a bundle held in fsys, such as an embed.FS or a

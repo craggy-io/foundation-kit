@@ -10,10 +10,6 @@ import (
 	"github.com/craggy-io/foundation-kit/kind"
 )
 
-// This example has no expected-output comment, so go test compiles it without
-// running it.
-//
-// TODO: add the expected output once Load is implemented.
 func Example() {
 	// A kind is declared once, by whoever owns that type of definition.
 	greeting := kind.New[string]("example.greeting", 1)
@@ -54,4 +50,41 @@ contributions:
 	for _, def := range bundle.All(catalog, greeting) {
 		fmt.Println(def.Ref, def.Value)
 	}
+
+	// Output:
+	// example.defaults#default hi
+	// example.hello#hello hello
+}
+
+func ExampleDir() {
+	script := kind.New[string]("example.script", 1)
+	prompt := kind.New[string]("example.prompt", 1)
+
+	catalog, err := bundle.Load(context.Background(), bundle.Options{
+		Sources: []bundle.Source{bundle.Dir("testdata/valid/example")},
+		Compilers: []bundle.AnyCompiler{
+			bundle.Compile(script, compile.Text()),
+			bundle.Compile(prompt, compile.Text()),
+		},
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	review, _ := bundle.Get(catalog, prompt, bundle.Ref{Owner: "example.hello", ID: "review"})
+	fmt.Print(review.Value)
+
+	// Assets are read on demand, and checked against the digest Load accepted.
+	tone, _ := review.Asset("assets/style/tone.md")
+	data, err := tone.Read(context.Background())
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Print(string(data))
+
+	// Output:
+	// Review the submitted change and list any problems.
+	// Be direct, and explain the reason for each problem.
 }
