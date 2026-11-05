@@ -66,7 +66,7 @@ The kit is organised in layers, and imports only ever point down. This is what l
 
 <p align="center">
   <a href="docs/assets/foundation-kit-architecture.svg">
-    <img src="docs/assets/foundation-kit-architecture.svg" alt="Foundation Kit layers, top to bottom: your applications and libraries; extensions (bundle/compile, kind/jsonschema); engines (bundle, settings); contracts (kind); the Go standard library. Imports only point down. Test support (bundletest, archtest) sits alongside and only tests import it." width="100%">
+    <img src="docs/assets/foundation-kit-architecture.svg" alt="Foundation Kit layers, top to bottom: your applications and libraries; extensions (bundle/compile, kind/jsonschema); engines (bundle, settings, and the small engines fsx, canonjson and retryafter); contracts (kind); the Go standard library. Imports only point down. Test support (bundletest, archtest) sits alongside and only tests import it." width="100%">
   </a>
 </p>
 
@@ -88,6 +88,10 @@ Nothing in the kit knows about any product. If a package needs a word like "lab"
 | `bundle/compile` | Extensions | Ready-made compilers for text, JSON and YAML | Working |
 | `kind/jsonschema` | Extensions | JSON Schema support for kinds | Working |
 | [`settings`](settings/README.md) | Engines | Live, user-editable values, declared by the code that reads them | Working |
+| [`fsx`](fsx/README.md) | Engines | Crash-safe atomic file writes, and exclusive file locks | Working, consumers not migrated yet |
+| [`canonjson`](canonjson/README.md) | Engines | One canonical byte form of JSON, for hashing | Working, consumers not migrated yet |
+| [`retryafter`](retryafter/README.md) | Engines | Reads the HTTP `Retry-After` header | Working, consumers not migrated yet |
+| [`adapters/sqlite`](adapters/sqlite/README.md) | Extensions, own Go module | Opens SQLite with safe settings, and migrates schemas by version | Working, consumers not migrated yet |
 | `bundle/bundletest` | Test support | Helpers for testing kinds, compilers and bundles | Working |
 | [`archtest`](archtest/README.md) | Test support | Turns architecture rules into test failures | Working |
 
@@ -103,6 +107,7 @@ To develop the kit alongside an application, use an uncommitted `go.work` file r
 
 ```sh
 go build ./... && go vet ./... && go test ./...
+(cd adapters/sqlite && go vet ./... && go test ./...)
 ```
 
 Before adding a package, check the rules for [what belongs in the kit](AGENTS.md#does-it-belong-here). They apply to people as well as coding agents.
