@@ -1,0 +1,6 @@
+apiVersion: craggy.io/bundle/v1
+metadata: {id: deps.app, version: 1.0.0}
+dependencies:
+  - id: deps.lib
+contributions:
+  - {id: main, kind: example.loader@1, path: main.txt}

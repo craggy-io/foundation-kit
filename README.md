@@ -2,7 +2,7 @@
 
 Foundation Kit is a set of Go packages for building applications and libraries on shared foundations. It's for the things every application otherwise writes for itself, starting with loading authored content such as scripts, prompts and schemas.
 
-> **Status: early development.** The packages work, but nothing is released yet and the API will change until there is. No consumer has been migrated to `bundle` yet. See [Packages](#packages) for what works today.
+> **Status: early development.** The packages work, but nothing is released yet and the API will change until there is. Consumers are being migrated to `bundle` now. See [Packages](#packages) for what works today.
 
 ## The problem it solves
 
@@ -34,7 +34,7 @@ for _, def := range bundle.All(catalog, Profile) {
 }
 ```
 
-A bundle is a directory with a `bundle.yaml` at its root:
+A bundle is a directory with a `bundle.yaml` at its root. The manifest is always required, and is never generated from a folder layout:
 
 ```text
 profiles/
@@ -90,7 +90,7 @@ Nothing in the kit knows about any product. If a package needs a word like "lab"
 | Package | Layer | Purpose | Status |
 | --- | --- | --- | --- |
 | [`kind`](kind/README.md) | Contracts | Versioned types of definition, with optional schemas and built-ins | Working |
-| [`bundle`](bundle/README.md) | Engines | Loads bundles and built-ins into one catalog | Working, not yet used by a consumer |
+| [`bundle`](bundle/README.md) | Engines | Loads bundles and built-ins into one catalog, with bundle-level overrides, global kinds, and `Live` reloading and installs | Working, consumers being migrated |
 | `bundle/compile` | Extensions | Ready-made compilers for text, JSON and YAML | Working |
 | `kind/jsonschema` | Extensions | JSON Schema support for kinds | Working |
 | [`settings`](settings/README.md) | Engines | Live, user-editable values, declared by the code that reads them | Working |
@@ -118,5 +118,5 @@ Before adding a package, check the rules for [what belongs in the kit](AGENTS.md
 | Document | What it's for |
 | --- | --- |
 | [AGENTS.md](AGENTS.md) | Rules for working in this repository, and for building on it |
-| [docs/decisions](docs/decisions) | Decisions we've made, starting with the [standard vocabulary](docs/decisions/ADR-0001-standard-vocabulary.md) |
+| [docs/decisions](docs/decisions) | Decisions we've made: the [standard vocabulary](docs/decisions/ADR-0001-standard-vocabulary.md), and [live catalogs and layering](docs/decisions/ADR-0002-live-catalogs-and-layering.md) |
 | [docs/research](docs/research) | Background research. It informed the decisions but isn't binding, and its proposals conflict with each other. |

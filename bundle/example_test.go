@@ -3,6 +3,7 @@ package bundle_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing/fstest"
 
 	"github.com/craggy-io/foundation-kit/bundle"
@@ -87,4 +88,77 @@ func ExampleDir() {
 	// Output:
 	// Review the submitted change and list any problems.
 	// Be direct, and explain the reason for each problem.
+}
+
+func ExampleLive() {
+	ctx := context.Background()
+	agent := kind.New[string]("example.agent", 1, kind.Global())
+	shipped := fstest.MapFS{
+		"bundle.yaml": {Data: []byte(`
+apiVersion: craggy.io/bundle/v1
+metadata: {id: example.shipped, version: 1.0.0}
+contributions:
+  - {id: reviewer, kind: example.agent@1, path: reviewer.txt}
+`)},
+		"reviewer.txt": {Data: []byte("shipped reviewer")},
+	}
+	installed, err := os.MkdirTemp("", "installed-")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(installed)
+
+	// The options function runs on every load, so it sees what is installed now.
+	// Installed bundles layer over the shipped one through a BundleOverride.
+	live, err := bundle.NewLive(ctx, func(ctx context.Context) (bundle.Options, error) {
+		children, err := bundle.Children(ctx, installed)
+		if err != nil {
+			return bundle.Options{}, err
+		}
+		o := bundle.Options{
+			Sources:   append([]bundle.Source{bundle.Embedded("shipped", shipped)}, children...),
+			Compilers: []bundle.AnyCompiler{bundle.Compile(agent, compile.Text())},
+		}
+		if len(children) > 0 { // a real host would take this from its settings
+			o.BundleOverrides = []bundle.BundleOverride{{Target: "example.shipped", Replacement: "example.mine"}}
+		}
+		return o, nil
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	live.Subscribe(func(old, new *bundle.Catalog) {
+		for _, o := range new.Overrides() {
+			fmt.Println("shadowed:", o.Target, "by", o.Replacement)
+		}
+	})
+
+	show := func() {
+		def, _ := bundle.Lookup(live.Catalog(), agent, "reviewer")
+		fmt.Println(def.Ref, def.Value)
+	}
+	show()
+
+	// Installing writes the bundle, including its bundle.yaml, and reloads.
+	mine := fstest.MapFS{
+		"bundle.yaml": {Data: []byte(`
+apiVersion: craggy.io/bundle/v1
+metadata: {id: example.mine, version: 1.0.0}
+contributions:
+  - {id: reviewer, kind: example.agent@1, path: reviewer.txt}
+`)},
+		"reviewer.txt": {Data: []byte("my reviewer")},
+	}
+	if _, err := live.Install(ctx, installed, mine); err != nil {
+		fmt.Println(err)
+		return
+	}
+	show()
+
+	// Output:
+	// example.shipped#reviewer shipped reviewer
+	// shadowed: example.shipped#reviewer by example.mine#reviewer
+	// example.mine#reviewer my reviewer
 }

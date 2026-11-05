@@ -24,6 +24,7 @@
 //	ID, ParseID             a kind's name and version, written "namespace.name@N"
 //	Kind, New, AnyKind      declare a kind
 //	Option, WithSchema      configure a kind
+//	Global                  make a kind's contribution IDs catalog-wide
 //	Schema                  optional validation of a definition's value
 //	Provider                Go code that supplies built-ins
 //	Builtin, AnyBuiltin     a definition supplied by Go code

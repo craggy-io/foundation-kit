@@ -33,6 +33,7 @@ type loader struct {
 	diags     []Diagnostic
 	kinds     map[kind.ID]kind.AnyKind // every kind seen, to catch two kinds with one ID
 	compilers map[kind.ID]AnyCompiler
+	prev      *Catalog // compiled values to reuse, or nil
 }
 
 // loadedBundle is one bundle that passed the Read and Validate stages.
@@ -51,6 +52,20 @@ type compiledDefinition struct {
 	value  any
 	refs   []Ref
 	assets []Asset
+	key    compileKey
+}
+
+// compileKey identifies everything a compiler can see, so that a value compiled
+// from the same inputs can be reused by a later load. A compiler may read any file
+// in its bundle and in its declared dependencies, so the key uses whole-bundle
+// digests rather than the contribution's own files. Origin is included because a
+// compiled value may hold the Source, through an Asset.
+type compileKey struct {
+	origin       string
+	bundle       string // the bundle's digest
+	dependencies string // declared dependencies' IDs and digests
+	kind         kind.ID
+	contribution string
 }
 
 type loadedProvider struct {
@@ -290,18 +305,42 @@ func (l *loader) checkProviders(providers []kind.Provider) []loadedProvider {
 	return out
 }
 
-// compileAll runs the Compile and Check stages, calling compilers concurrently.
+// compileAll runs the Compile and Check stages, calling compilers concurrently. A
+// contribution whose compileKey matches one in l.prev reuses that value instead of
+// calling its compiler, but is still checked against its kind.
 func (l *loader) compileAll(ctx context.Context, bundles []*loadedBundle) {
 	type job struct {
 		bundle *loadedBundle
 		index  int
 		c      Contribution
 		comp   AnyCompiler
+		reuse  *compiledValue
 		diags  []Diagnostic
 	}
+
+	// Bundles by ID, so that a contribution can read its declared dependencies. An
+	// ID that more than one bundle has is left out, because order must not pick one,
+	// and the Link stage rejects it anyway.
+	byID := map[string]*loadedBundle{}
+	count := map[string]int{}
+	for _, b := range bundles {
+		byID[b.identity.ID] = b
+		count[b.identity.ID]++
+	}
+
 	var jobs []*job
 	for _, b := range bundles {
 		files := b.snap.FS()
+		deps := map[string]dependency{}
+		var depKey strings.Builder
+		for _, d := range b.manifest.Dependencies {
+			fmt.Fprintf(&depKey, "%d:%s", len(d.ID), d.ID)
+			if dep, ok := byID[d.ID]; ok && count[d.ID] == 1 {
+				deps[d.ID] = dependency{files: dep.snap.FS(), identity: dep.identity}
+				fmt.Fprintf(&depKey, "=%s", dep.identity.Digest)
+			}
+			depKey.WriteString(";")
+		}
 		b.defs = make([]compiledDefinition, len(b.manifest.Contributions))
 		for i, mc := range b.manifest.Contributions {
 			id, _ := kind.ParseID(mc.Kind) // checked by read
@@ -311,10 +350,19 @@ func (l *loader) compileAll(ctx context.Context, bundles []*loadedBundle) {
 				assets = append(assets, Asset{source: b.source, path: p, size: info.Size, digest: info.Digest})
 			}
 			ref := Ref{Owner: b.identity.ID, ID: mc.ID}
-			b.defs[i] = compiledDefinition{ref: ref, kind: l.compilers[id].Kind(), assets: assets}
-			jobs = append(jobs, &job{bundle: b, index: i, comp: l.compilers[id], c: Contribution{
+			key := compileKey{origin: b.identity.Origin, bundle: b.identity.Digest,
+				dependencies: depKey.String(), kind: id, contribution: mc.ID}
+			b.defs[i] = compiledDefinition{ref: ref, kind: l.compilers[id].Kind(), assets: assets, key: key}
+			j := &job{bundle: b, index: i, comp: l.compilers[id], c: Contribution{
 				Ref: ref, Kind: id, Bundle: b.identity, Path: mc.Path, Files: files, Assets: slices.Clone(assets),
-			}})
+				dependencies: deps,
+			}}
+			if l.prev != nil {
+				if v, ok := l.prev.compiled[key]; ok {
+					j.reuse = &v
+				}
+			}
+			jobs = append(jobs, j)
 		}
 	}
 
@@ -330,16 +378,22 @@ func (l *loader) compileAll(ctx context.Context, bundles []*loadedBundle) {
 				return
 			}
 			def := &j.bundle.defs[j.index]
-			out, diags := safeCompile(ctx, j.comp, j.c)
-			for _, d := range diags {
-				d.Bundle = cmp.Or(d.Bundle, j.c.Bundle.ID)
-				d.Contribution = cmp.Or(d.Contribution, j.c.Ref.ID)
-				d.Code = cmp.Or(d.Code, CodeCompileFailed)
-				d.Severity = cmp.Or(d.Severity, SeverityError)
-				j.diags = append(j.diags, d)
-			}
-			if slices.ContainsFunc(j.diags, func(d Diagnostic) bool { return d.Severity == SeverityError }) {
-				return
+			var out compiledValue
+			if j.reuse != nil {
+				out = *j.reuse
+			} else {
+				var diags []Diagnostic
+				out, diags = safeCompile(ctx, j.comp, j.c)
+				for _, d := range diags {
+					d.Bundle = cmp.Or(d.Bundle, j.c.Bundle.ID)
+					d.Contribution = cmp.Or(d.Contribution, j.c.Ref.ID)
+					d.Code = cmp.Or(d.Code, CodeCompileFailed)
+					d.Severity = cmp.Or(d.Severity, SeverityError)
+					j.diags = append(j.diags, d)
+				}
+				if slices.ContainsFunc(j.diags, func(d Diagnostic) bool { return d.Severity == SeverityError }) {
+					return
+				}
 			}
 			if err := def.kind.Validate(out.value); err != nil {
 				j.diags = append(j.diags, Diagnostic{Code: CodeSchemaInvalid, Bundle: j.c.Bundle.ID,
@@ -370,8 +424,13 @@ func safeCompile(ctx context.Context, comp AnyCompiler, c Contribution) (out com
 }
 
 // link runs the Link stage.
-func (l *loader) link(bundles []*loadedBundle, providers []loadedProvider, overrides []Override) map[string]string {
-	var in link.Input
+func (l *loader) link(bundles []*loadedBundle, providers []loadedProvider, o Options) link.Result {
+	in := link.Input{Global: map[string]bool{}}
+	for id, k := range l.kinds {
+		if k.Global() {
+			in.Global[id.String()] = true
+		}
+	}
 	for _, b := range bundles {
 		owner := link.Owner{ID: b.identity.ID, Digest: b.identity.Digest, Bundle: true}
 		for _, d := range b.manifest.Dependencies {
@@ -396,11 +455,14 @@ func (l *loader) link(bundles []*loadedBundle, providers []loadedProvider, overr
 			})
 		}
 	}
-	for _, o := range overrides {
-		in.Overrides = append(in.Overrides, link.Override{Target: o.Target.String(), Replacement: o.Replacement.String()})
+	for _, ov := range o.Overrides {
+		in.Overrides = append(in.Overrides, link.Override{Target: ov.Target.String(), Replacement: ov.Replacement.String()})
+	}
+	for _, bo := range o.BundleOverrides {
+		in.OwnerOverrides = append(in.OwnerOverrides, link.Override{Target: bo.Target, Replacement: bo.Replacement})
 	}
 
-	bindings, diags := link.Resolve(in)
+	res, diags := link.Resolve(in)
 	for _, d := range diags {
 		var contribution string
 		if ref, err := ParseRef(d.Ref); err == nil {
@@ -408,24 +470,34 @@ func (l *loader) link(bundles []*loadedBundle, providers []loadedProvider, overr
 		}
 		l.add(Diagnostic{Code: Code(d.Code), Bundle: d.Owner, Contribution: contribution, Message: d.Message, Related: d.Related})
 	}
-	return bindings
+	return res
 }
 
 // accept runs the Accept stage. Everything it receives has passed every check.
-func accept(bundles []*loadedBundle, providers []loadedProvider, overrides []Override, bindings map[string]string) *Catalog {
-	c := &Catalog{definitions: map[Ref]storedDefinition{}, overrides: map[Ref]Ref{}}
+func accept(bundles []*loadedBundle, providers []loadedProvider, o Options, res link.Result) *Catalog {
+	c := &Catalog{
+		definitions: map[Ref]storedDefinition{},
+		overrides:   map[Ref]Ref{},
+		explicit:    map[Ref]bool{},
+		global:      map[kind.ID]map[string]Ref{},
+		compiled:    map[compileKey]compiledValue{},
+		layers:      map[string]string{},
+	}
 	in := digest.CatalogInput{
 		BundleDigests: map[string]string{},
 		Providers:     map[string]string{},
-		Bindings:      bindings,
+		Bindings:      res.Bindings,
 	}
 	kinds := map[string]bool{}
+	globalKinds := map[kind.ID]bool{}
 	for _, b := range bundles {
 		c.owners = append(c.owners, b.identity)
 		in.BundleDigests[b.identity.ID] = b.identity.Digest
 		for _, def := range b.defs {
 			c.definitions[def.ref] = storedDefinition{kind: def.kind.ID(), owner: b.identity, value: def.value, assets: def.assets}
+			c.compiled[def.key] = compiledValue{value: def.value, refs: def.refs}
 			kinds[def.kind.ID().String()] = true
+			globalKinds[def.kind.ID()] = def.kind.Global()
 		}
 	}
 	for _, p := range providers {
@@ -435,21 +507,43 @@ func accept(bundles []*loadedBundle, providers []loadedProvider, overrides []Ove
 			ref := Ref{Owner: p.identity.ID, ID: b.ID()}
 			c.definitions[ref] = storedDefinition{kind: b.Kind().ID(), owner: p.identity, value: b.Value()}
 			kinds[b.Kind().ID().String()] = true
+			globalKinds[b.Kind().ID()] = b.Kind().Global()
 		}
 	}
 	for ref := range c.definitions {
 		c.order = append(c.order, ref)
 		in.Contributions = append(in.Contributions, ref.String())
 	}
+
 	// Apply overrides after every definition is stored, so that a replacement's own
-	// definition is the one copied.
+	// definition is the one copied. Link has checked that every reference parses.
+	for _, ov := range o.Overrides {
+		c.explicit[ov.Target] = true
+	}
+	for _, bo := range o.BundleOverrides {
+		c.layers[bo.Target] = bo.Replacement
+	}
 	replaced := map[Ref]storedDefinition{}
-	for _, o := range overrides {
-		replaced[o.Target] = c.definitions[o.Replacement]
-		c.overrides[o.Target] = o.Replacement
+	for t, r := range res.Overrides {
+		target, _ := ParseRef(t)
+		replacement, _ := ParseRef(r)
+		replaced[target] = c.definitions[replacement]
+		c.overrides[target] = replacement
 	}
 	for target, def := range replaced {
 		c.definitions[target] = def
+	}
+
+	// Index the effective definitions of global kinds. Link has checked that their
+	// contribution IDs are unique.
+	for ref, def := range c.definitions {
+		if _, overridden := c.overrides[ref]; overridden || !globalKinds[def.kind] {
+			continue
+		}
+		if c.global[def.kind] == nil {
+			c.global[def.kind] = map[string]Ref{}
+		}
+		c.global[def.kind][ref.ID] = ref
 	}
 
 	slices.SortFunc(c.order, compareRefs)

@@ -25,6 +25,31 @@ type Contribution struct {
 	// written there. The resulting Definition carries the same list automatically, so
 	// a Compiler only needs them if the contribution's meaning depends on their bytes.
 	Assets []Asset
+
+	dependencies map[string]dependency // declared dependencies that are loaded bundles
+}
+
+// dependency is what a Contribution can see of one declared dependency.
+type dependency struct {
+	files    fs.FS
+	identity Identity
+}
+
+// Dependency returns the snapshot and identity of a bundle that this contribution's
+// bundle declares under dependencies in bundle.yaml, so that a compiler can read a
+// shared library bundle, as a Starlark load() would. Like Files, the snapshot holds
+// every file outside the dependency's assets/ directory, and can't change.
+//
+// It reports false for any ID the manifest doesn't declare, for a declared dependency
+// that isn't loaded (which Load reports as CodeDependencyMissing), and for a
+// provider, which has no files. The dependency's digest is part of the key Live uses
+// to reuse compiled values, so a changed dependency recompiles its dependents.
+func (c Contribution) Dependency(id string) (fs.FS, Identity, bool) {
+	d, ok := c.dependencies[id]
+	if !ok {
+		return nil, Identity{}, false
+	}
+	return d.files, d.identity, true
 }
 
 // Compiled is a Compiler's successful result.
@@ -44,6 +69,11 @@ type Compiled[T any] struct {
 // can find as Diagnostics rather than stopping at the first, and any Diagnostic with
 // SeverityError rejects the load. It must have no side effects: compiling a
 // contribution must not fetch data, start a process or contact a service.
+//
+// Its result must depend only on what the Contribution gives it: its own bundle,
+// its declared dependencies (Contribution.Dependency), its Ref, Kind and Bundle. Live
+// relies on this to reuse a value when none of those has changed, so change a kind's
+// version when its compiler starts producing different values from the same files.
 type Compiler[T any] func(ctx context.Context, c Contribution) (Compiled[T], []Diagnostic)
 
 // AnyCompiler is a kind paired with its Compiler, which is what Options.Compilers

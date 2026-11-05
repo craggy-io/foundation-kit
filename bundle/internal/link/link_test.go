@@ -24,10 +24,11 @@ func base() Input {
 }
 
 func TestResolve(t *testing.T) {
-	bindings, diags := Resolve(base())
+	res, diags := Resolve(base())
 	if len(diags) != 0 {
 		t.Fatalf("diagnostics = %+v", diags)
 	}
+	bindings := res.Bindings
 	want := map[string]string{"app#helper": "app#helper", "shared#prompt": "shared#prompt"}
 	if !maps.Equal(bindings, want) {
 		t.Errorf("bindings = %v, want %v", bindings, want)
@@ -37,12 +38,12 @@ func TestResolve(t *testing.T) {
 func TestResolveAppliesOverrides(t *testing.T) {
 	in := base()
 	in.Overrides = []Override{{Target: "shared#prompt", Replacement: "defaults#prompt"}}
-	bindings, diags := Resolve(in)
+	res, diags := Resolve(in)
 	if len(diags) != 0 {
 		t.Fatalf("diagnostics = %+v", diags)
 	}
-	if bindings["shared#prompt"] != "defaults#prompt" {
-		t.Errorf("bindings = %v", bindings)
+	if res.Bindings["shared#prompt"] != "defaults#prompt" || res.Overrides["shared#prompt"] != "defaults#prompt" {
+		t.Errorf("result = %+v", res)
 	}
 }
 
@@ -74,14 +75,33 @@ func TestResolveRejects(t *testing.T) {
 			in.Nodes = append(in.Nodes, Node{Ref: "app#other", Kind: "a.prompt@1", Owner: "app"})
 			in.Overrides = []Override{{"shared#prompt", "defaults#prompt"}, {"defaults#prompt", "app#other"}}
 		}, codeOverrideInvalid},
+		{"bundle override of itself", func(in *Input) { in.OwnerOverrides = []Override{{"shared", "shared"}} }, codeOverrideInvalid},
+		{"bundle override target unknown", func(in *Input) { in.OwnerOverrides = []Override{{"gone", "shared"}} }, codeOverrideInvalid},
+		{"bundle override replacement unknown", func(in *Input) { in.OwnerOverrides = []Override{{"shared", "gone"}} }, codeOverrideInvalid},
+		{"bundle override target twice", func(in *Input) {
+			in.OwnerOverrides = []Override{{"shared", "defaults"}, {"shared", "app"}}
+		}, codeOverrideInvalid},
+		{"bundle override cycle", func(in *Input) {
+			in.OwnerOverrides = []Override{{"shared", "defaults"}, {"defaults", "app"}, {"app", "shared"}}
+		}, codeOverrideInvalid},
+		{"bundle override kind mismatch", func(in *Input) {
+			in.Nodes = append(in.Nodes, Node{Ref: "defaults#helper", Kind: "a.prompt@1", Owner: "defaults"})
+			in.OwnerOverrides = []Override{{"app", "defaults"}}
+		}, codeOverrideInvalid},
+		{"bundle override and explicit override of one target", func(in *Input) {
+			in.Nodes = append(in.Nodes, Node{Ref: "app#prompt", Kind: "a.prompt@1", Owner: "app"})
+			in.Overrides = []Override{{"shared#prompt", "app#prompt"}}
+			in.OwnerOverrides = []Override{{"shared", "defaults"}}
+		}, codeOverrideInvalid},
+		{"global ID conflict", func(in *Input) { in.Global = map[string]bool{"a.prompt@1": true} }, codeIDConflict},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			in := base()
 			tt.change(&in)
-			bindings, diags := Resolve(in)
-			if bindings != nil {
-				t.Errorf("bindings = %v, want nil on failure", bindings)
+			res, diags := Resolve(in)
+			if res.Bindings != nil || res.Overrides != nil {
+				t.Errorf("result = %+v, want none on failure", res)
 			}
 			for _, d := range diags {
 				if d.Code == tt.code {
@@ -114,5 +134,44 @@ func TestResolveIsDeterministic(t *testing.T) {
 				t.Fatal("diagnostic order changed between runs")
 			}
 		}
+	}
+}
+
+func TestResolveExpandsBundleOverrideChains(t *testing.T) {
+	in := Input{
+		Owners: []Owner{{ID: "shipped", Bundle: true}, {ID: "user", Bundle: true}, {ID: "project", Bundle: true}},
+		Nodes: []Node{
+			{Ref: "shipped#a", Kind: "k.p@1", Owner: "shipped"},
+			{Ref: "shipped#b", Kind: "k.p@1", Owner: "shipped"},
+			{Ref: "shipped#c", Kind: "k.p@1", Owner: "shipped"},
+			{Ref: "user#a", Kind: "k.p@1", Owner: "user"},
+			{Ref: "user#b", Kind: "k.p@1", Owner: "user"},
+			{Ref: "project#a", Kind: "k.p@1", Owner: "project"},
+			{Ref: "project#new", Kind: "k.p@1", Owner: "project"},
+		},
+		OwnerOverrides: []Override{{"shipped", "user"}, {"user", "project"}},
+		Global:         map[string]bool{"k.p@1": true},
+	}
+	res, diags := Resolve(in)
+	if len(diags) != 0 {
+		t.Fatalf("diagnostics = %+v", diags)
+	}
+	want := map[string]string{"shipped#a": "project#a", "user#a": "project#a", "shipped#b": "user#b"}
+	if !maps.Equal(res.Overrides, want) {
+		t.Errorf("overrides = %v, want %v", res.Overrides, want)
+	}
+}
+
+func TestResolveGlobalIgnoresOverriddenTargets(t *testing.T) {
+	in := base()
+	in.Global = map[string]bool{"a.prompt@1": true}
+	in.Overrides = []Override{{"shared#prompt", "defaults#prompt"}}
+	if _, diags := Resolve(in); len(diags) != 0 {
+		t.Errorf("diagnostics = %+v", diags)
+	}
+	in.Overrides = nil
+	_, diags := Resolve(in)
+	if len(diags) != 2 {
+		t.Errorf("diagnostics = %+v, want one for each conflicting definition", diags)
 	}
 }

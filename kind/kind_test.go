@@ -144,3 +144,13 @@ func TestBuiltin(t *testing.T) {
 		t.Errorf("a built-in's value should pass its own kind's check: %v", err)
 	}
 }
+
+func TestGlobal(t *testing.T) {
+	if New[string]("a.b", 1).Global() {
+		t.Error("a kind is global without the Global option")
+	}
+	var k AnyKind = New[string]("a.b", 1, Global(), WithSchema(nil))
+	if !k.Global() {
+		t.Error("Global() = false for a kind declared with Global")
+	}
+}

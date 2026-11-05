@@ -36,6 +36,7 @@ const (
 	CodeDependencyMismatch   Code = "bundle.dependency_mismatch"
 	CodeProviderInvalid      Code = "bundle.provider_invalid"
 	CodeOverrideInvalid      Code = "bundle.override_invalid"
+	CodeIDConflict           Code = "bundle.id_conflict"
 )
 
 // Diagnostic is one problem, in a form shared by CLIs, UIs, logs and agents. Fields

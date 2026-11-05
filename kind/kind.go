@@ -15,6 +15,10 @@ type AnyKind interface {
 	// Schema returns the kind's schema, or nil if it has none.
 	Schema() Schema
 
+	// Global reports whether the kind's contribution IDs are unique across the
+	// whole catalog. See Global.
+	Global() bool
+
 	// Validate checks that value has the kind's Go type and satisfies its schema,
 	// if it has one.
 	Validate(value any) error
@@ -28,6 +32,7 @@ type AnyKind interface {
 type Kind[T any] struct {
 	id     ID
 	schema Schema
+	global bool
 }
 
 // compile-time check that *Kind[T] satisfies AnyKind.
@@ -38,11 +43,21 @@ type Option func(*settings)
 
 type settings struct {
 	schema Schema
+	global bool
 }
 
 // WithSchema attaches a schema to a kind.
 func WithSchema(s Schema) Option {
 	return func(o *settings) { o.schema = s }
+}
+
+// Global marks a kind whose definitions are looked up by contribution ID alone,
+// across every bundle and provider, such as agent or profile names. bundle.Load then
+// rejects two effective definitions of the kind that share a contribution ID, and
+// bundle.Lookup finds one by that ID. Definitions of other kinds are only unique by
+// their full Ref.
+func Global() Option {
+	return func(o *settings) { o.global = true }
 }
 
 // New creates a kind, normally once as a package-level variable in the library or
@@ -55,7 +70,7 @@ func New[T any](name string, version int, opts ...Option) *Kind[T] {
 	for _, opt := range opts {
 		opt(&o)
 	}
-	return &Kind[T]{id: ID{Name: name, Version: version}, schema: o.schema}
+	return &Kind[T]{id: ID{Name: name, Version: version}, schema: o.schema, global: o.global}
 }
 
 // ID returns the kind's name and version.
@@ -63,6 +78,10 @@ func (k *Kind[T]) ID() ID { return k.id }
 
 // Schema returns the kind's schema, or nil if it has none.
 func (k *Kind[T]) Schema() Schema { return k.schema }
+
+// Global reports whether the kind was declared with Global, so that its contribution
+// IDs are unique across the whole catalog.
+func (k *Kind[T]) Global() bool { return k.global }
 
 func (k *Kind[T]) sealed() {}
 
