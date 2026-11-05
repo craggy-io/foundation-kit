@@ -6,7 +6,7 @@
 import "github.com/craggy-io/foundation-kit/bundle"
 ```
 
-> **Status: stub.** The public API compiles, but it can't load a bundle yet. `Load` and `Dir` return `ErrNotImplemented`. See [Implementation status](#implementation-status).
+> **Status: working, unreleased.** The whole pipeline is implemented and tested, but no consumer has been migrated yet, so the API may still change. See [Implementation status](#implementation-status).
 
 Kinds are declared in the [`kind`](../kind/README.md) package. Terms used here are defined in [ADR-0001](../docs/decisions/ADR-0001-standard-vocabulary.md).
 
@@ -57,6 +57,8 @@ contributions:                   # the entries in this bundle
       - assets/prompts/review.md
       - assets/models/classifier.bin
 ```
+
+Bundle, dependency, provider, built-in and contribution IDs use letters, digits, `.`, `_` and `-`, and start and end with a letter or digit. String fields must be YAML strings, so quote a value such as `version: "1.0"` that YAML would read as a number.
 
 A definition is referred to as `owner-id#id`, where the owner is its bundle or provider, for example `example.android-research#audit`.
 
@@ -118,7 +120,9 @@ A `Source` must therefore keep working for as long as its catalog is in use. An 
 - **Schemas apply to every definition.** If a kind has a schema, it checks compiled values and built-ins alike.
 - **Duplicates are errors.** Order never picks a winner, and replacing something requires an explicit `Override`.
 - **References are declared.** A reference into another bundle must be listed in `dependencies`.
-- **Every problem is reported at once.** Reports are deterministic, and a failed load returns no catalog.
+- **Every problem is reported at once.** Reports are deterministic, and a failed load returns no catalog. A bundle that fails validation isn't compiled, but the other bundles still are, so one load reports as much as it can.
+- **Bundles are bounded.** A bundle may hold at most 10,000 files, and its files outside `assets/` at most 16 MiB each and 256 MiB together (`bundle.limit_exceeded`). Assets have no size limit.
+- **Overrides take one step.** An override's target and replacement must exist and have the same kind, a target can be overridden only once, and a replacement can't itself be overridden. `Get` on the target returns the replacement's value, owner and assets, and `Catalog.Explain` shows the replacement.
 - **Loading has no side effects.** Listing a definition must not start or contact anything.
 
 ## Usage
@@ -164,7 +168,7 @@ Most kinds just read one file into a value, so the `compile` package covers them
 | --- | --- |
 | `compile.Text()` | The file's contents as a string |
 | `compile.JSON[T]()` | The file decoded into `T`, rejecting unknown fields and trailing data |
-| `compile.YAML[T]()` | The file decoded into `T` under the same strict rules as `bundle.yaml` (not implemented yet) |
+| `compile.YAML[T]()` | The file decoded into `T` under the same strict rules as `bundle.yaml`, then with the same rules and `json` struct tags as `compile.JSON` |
 
 ## Pipeline
 
@@ -172,8 +176,8 @@ Most kinds just read one file into a value, so the `compile` package covers them
 | --- | --- | --- |
 | Locate | Open each selected source | `source.go` |
 | Read | Snapshot the files, hash the assets and parse `bundle.yaml` | `internal/snapshot`, `internal/manifest` |
-| Validate | Check the manifest, paths, assets, IDs, kinds and duplicates | `internal/manifest`, `load.go` |
-| Compile | Call each contribution's compiler | `compiler.go` |
+| Validate | Check the manifest, paths, assets, IDs, kinds and duplicates | `internal/manifest`, `pipeline.go` |
+| Compile | Call each contribution's compiler, concurrently | `compiler.go`, `pipeline.go` |
 | Check | Apply each kind's schema to compiled values and built-ins | `kind.Kind.Validate` |
 | Link | Combine bundles and providers, then resolve dependencies, references and overrides | `internal/link` |
 | Accept | Compute digests and publish the immutable catalog | `internal/digest`, `catalog.go` |
@@ -185,6 +189,7 @@ Nothing is started by `Load`. Services read what they need from the catalog and 
 | Path | Purpose |
 | --- | --- |
 | `load.go` | `Load`, `Options`, `Override` |
+| `pipeline.go` | The stages that `Load` runs |
 | `compiler.go` | `Compile`, `AnyCompiler`, `Compiler[T]`, `Compiled[T]`, `Contribution` |
 | `catalog.go` | `Catalog`, `Definition[T]`, `All`, `Get` |
 | `asset.go` | `Asset`, `ErrAssetChanged` |
@@ -193,7 +198,8 @@ Nothing is started by `Load`. Services read what they need from the catalog and 
 | `diagnostic.go` | `Diagnostic`, `LoadError`, severities and codes |
 | `compile/` | Ready-made compilers |
 | `bundletest/` | Helpers for testing kinds, compilers and shipped bundles |
-| `internal/manifest/` | Strict `bundle.yaml` parsing and validation |
+| `internal/manifest/` | `bundle.yaml` decoding and validation |
+| `internal/strictyaml/` | The strict YAML subset, and the only import of the YAML library (`go.yaml.in/yaml/v3`) |
 | `internal/snapshot/` | Path policy, immutable file copies and asset hashing |
 | `internal/digest/` | Canonical file, bundle and catalog hashing |
 | `internal/link/` | Reference, dependency and override resolution |
@@ -213,6 +219,9 @@ Nothing is started by `Load`. Services read what they need from the catalog and 
 - **Built-in identity:** a built-in has no file bytes, so its digest is empty. The catalog digest covers only its provider's ID and version, so changing a built-in's value without changing that version doesn't change the digest.
 - **Built-in references:** a built-in can't declare references to other definitions.
 - **`compile.JSON`:** it doesn't detect duplicate keys, and its diagnostics have no line numbers.
+- **`compile.YAML` positions:** syntax and strictness problems have exact lines, but a decoding error such as an unknown field or a wrong type is placed by searching for the field's name, so it can point at the wrong line when that name appears more than once.
+- **Limits:** the bundle size limits are fixed. Raise them in `pipeline.go` if a real bundle needs more, rather than adding an option speculatively.
+- **Dependencies are all-or-nothing:** a declared dependency that isn't loaded is an error (`bundle.dependency_missing`), so there are no optional dependencies.
 - **Asset load time:** `Load` hashes every asset on every load, so very large assets slow startup even though their bytes aren't kept.
 - **Asset streaming:** bytes from `Asset.Open` are unverified until the stream reaches EOF.
 - **Asset paths:** an asset is only reachable as a stream, so a tool that needs a real file path has to copy it to disk first.
@@ -220,28 +229,21 @@ Nothing is started by `Load`. Services read what they need from the catalog and 
 
 ## Implementation status
 
-Already working:
+Working and tested:
 
-- `Compile`, `All` and `Get`
-- `Asset`, including verified `Read` and `Open`, though only `Load` will create one
-- `Ref` and `ParseRef`
-- `Embedded`
-- `compile.Text` and `compile.JSON`
-- `LoadError`, `bundletest.CheckSample` and `bundletest.RequireCode`
-- `internal/digest.New` and `Sum`, which hash one file
+- `Load`, with every stage above, and `Options`, `Override`
+- `Dir`, through `os.OpenRoot`, and `Embedded`
+- `Catalog`, `Catalog.Digest`, `Catalog.Owners`, `Catalog.Explain`, `All` and `Get`
+- `Asset`, including verified `Read` and `Open`
+- `Compile`, `Ref`, `ParseRef`, `Identity`, `LoadError` and every diagnostic code
+- `compile.Text`, `compile.JSON` and `compile.YAML`
+- `bundletest.Load`, `bundletest.CheckSample` and `bundletest.RequireCode`
+- `internal/strictyaml`, `internal/manifest`, `internal/snapshot`, `internal/link`, and `internal/digest`, whose bundle and catalog encodings have golden tests
+- Tests that load every `testdata` bundle, and an example with expected output
 
-Still to build, in a suggested order:
+Still to build:
 
-1. [ ] `internal/manifest.Parse`: choose the YAML library and implement strict parsing, including the `assets` rules.
-2. [ ] `compile.YAML`, sharing that strict parsing.
-3. [ ] `internal/snapshot`: `Take` and `FS`, hashing assets as streams.
-4. [ ] `internal/digest`: `Bundle` and `Catalog`, with golden tests.
-5. [ ] `internal/link.Resolve`.
-6. [ ] `Load`, running the stages above and creating each `Asset`, then remove `ErrNotImplemented`.
-7. [ ] `Dir`, using `os.OpenRoot`, reopened for each asset read.
-8. [ ] `Catalog.Explain`.
-9. [ ] Tests that load each `testdata` bundle, and expected output for the package example.
-10. [ ] Port a real script kind and intel pack from `cclab-platform` before calling the API stable.
+1. [ ] Port a real script kind and intel pack from `cclab-platform` before calling the API stable.
 
 ## Checks
 

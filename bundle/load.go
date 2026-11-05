@@ -2,15 +2,9 @@ package bundle
 
 import (
 	"context"
-	"errors"
 
 	"github.com/craggy-io/foundation-kit/kind"
 )
-
-// ErrNotImplemented is returned by the parts of this package that are still stubs.
-//
-// TODO: delete this once Load and Dir are implemented.
-var ErrNotImplemented = errors.New("bundle: not implemented")
 
 // Options selects what Load reads and how it interprets it.
 //
@@ -76,7 +70,39 @@ type Override struct {
 // Starting behaviour is deliberately not a stage. Owning services do that later,
 // using definitions they read from the Catalog.
 //
-// TODO: implement the pipeline.
+// Problems in one bundle don't stop the others being read, validated and compiled,
+// so a single Load reports as much as it can. Linking needs the whole graph, so it
+// only runs once every earlier stage has passed everywhere. If ctx is cancelled,
+// Load returns ctx's error instead of a *LoadError.
 func Load(ctx context.Context, o Options) (*Catalog, error) {
-	return nil, ErrNotImplemented
+	l := &loader{kinds: map[kind.ID]kind.AnyKind{}, compilers: map[kind.ID]AnyCompiler{}}
+	l.checkCompilers(o.Compilers)
+
+	var bundles []*loadedBundle
+	for _, src := range o.Sources {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if b := l.read(ctx, src); b != nil {
+			bundles = append(bundles, b)
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	providers := l.checkProviders(o.Providers)
+
+	l.compileAll(ctx, bundles)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if l.failed() {
+		return nil, l.loadError()
+	}
+
+	bindings := l.link(bundles, providers, o.Overrides)
+	if l.failed() {
+		return nil, l.loadError()
+	}
+	return accept(bundles, providers, o.Overrides, bindings), nil
 }

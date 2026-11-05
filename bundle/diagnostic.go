@@ -16,6 +16,7 @@ type Code string
 
 // Codes reported by Load. Compilers may add their own, namespaced by kind.
 const (
+	CodeSourceUnavailable    Code = "bundle.source_unavailable"
 	CodeManifestMissing      Code = "bundle.manifest_missing"
 	CodeManifestInvalid      Code = "bundle.manifest_invalid"
 	CodeManifestNested       Code = "bundle.manifest_nested"
@@ -31,6 +32,9 @@ const (
 	CodeSchemaInvalid        Code = "bundle.schema_invalid"
 	CodeReferenceMissing     Code = "bundle.reference_missing"
 	CodeDependencyUndeclared Code = "bundle.dependency_undeclared"
+	CodeDependencyMissing    Code = "bundle.dependency_missing"
+	CodeDependencyMismatch   Code = "bundle.dependency_mismatch"
+	CodeProviderInvalid      Code = "bundle.provider_invalid"
 	CodeOverrideInvalid      Code = "bundle.override_invalid"
 )
 

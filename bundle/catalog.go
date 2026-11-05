@@ -1,7 +1,9 @@
 package bundle
 
 import (
+	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/craggy-io/foundation-kit/kind"
 )
@@ -32,6 +34,7 @@ type Catalog struct {
 	owners      []Identity
 	order       []Ref // every key of definitions, sorted
 	definitions map[Ref]storedDefinition
+	overrides   map[Ref]Ref // target to replacement, as applied by Load
 }
 
 // storedDefinition is a Definition with its type erased. Only Get reads the value.
@@ -85,11 +88,39 @@ func (c *Catalog) Owners() []Identity {
 	return append([]Identity(nil), c.owners...)
 }
 
-// Explain describes where ref came from: its owner, origin and digest, and any
-// Override that applied. It is intended for humans and diagnostic tools, and its
-// format is not stable.
-//
-// TODO: implement once Load records origins and applied overrides.
+// Explain describes where ref came from: its kind, owner, origin and digest, its
+// assets, and any Override that applied. It is intended for humans and diagnostic
+// tools, and its format is not stable.
 func (c *Catalog) Explain(ref Ref) string {
-	panic(ErrNotImplemented)
+	def, ok := c.definitions[ref]
+	if !ok {
+		return fmt.Sprintf("%s: not in the catalog\n", ref)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n", ref)
+	fmt.Fprintf(&b, "  kind:    %s\n", def.kind)
+	if replacement, ok := c.overrides[ref]; ok {
+		fmt.Fprintf(&b, "  override: replaced by %s, so the rest describes that definition\n", replacement)
+	}
+	var replaces []string
+	for target, replacement := range c.overrides {
+		if replacement == ref {
+			replaces = append(replaces, target.String())
+		}
+	}
+	slices.Sort(replaces)
+	for _, target := range replaces {
+		fmt.Fprintf(&b, "  override: replaces %s\n", target)
+	}
+	fmt.Fprintf(&b, "  owner:   %s %s\n", def.owner.ID, def.owner.Version)
+	fmt.Fprintf(&b, "  origin:  %s\n", def.owner.Origin)
+	if def.owner.Digest == "" {
+		fmt.Fprintf(&b, "  digest:  none, because built-ins have no file bytes\n")
+	} else {
+		fmt.Fprintf(&b, "  digest:  %s\n", def.owner.Digest)
+	}
+	for _, a := range def.assets {
+		fmt.Fprintf(&b, "  asset:   %s (%d bytes, %s)\n", a.path, a.size, a.digest)
+	}
+	return b.String()
 }
