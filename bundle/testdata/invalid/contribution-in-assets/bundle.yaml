@@ -1,0 +1,12 @@
+# Expected: bundle.path_forbidden, because a contribution's path must be outside assets/.
+# Validation fails first, so the missing payload file is not reported.
+apiVersion: craggy.io/bundle/v1
+
+metadata:
+  id: invalid.contribution-in-assets
+  version: 0.1.0
+
+contributions:
+  - id: script
+    kind: example.script@1
+    path: assets/a.star

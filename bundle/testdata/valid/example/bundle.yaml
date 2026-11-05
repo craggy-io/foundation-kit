@@ -1,0 +1,17 @@
+apiVersion: craggy.io/bundle/v1
+
+metadata:
+  id: example.hello
+  version: 0.1.0
+  title: Example bundle
+
+contributions:
+  - id: hello
+    kind: example.script@1
+    path: scripts/hello.star
+
+  - id: review
+    kind: example.prompt@1
+    path: prompts/review.md
+    assets:
+      - assets/style/tone.md

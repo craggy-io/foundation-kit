@@ -1,0 +1,16 @@
+# Expected: bundle.duplicate_id, because two contributions share the ID "same".
+# Validation fails first, so the missing payload files are not reported.
+apiVersion: craggy.io/bundle/v1
+
+metadata:
+  id: invalid.duplicate-contribution
+  version: 0.1.0
+
+contributions:
+  - id: same
+    kind: example.script@1
+    path: scripts/a.star
+
+  - id: same
+    kind: example.script@1
+    path: scripts/b.star
