@@ -1,6 +1,7 @@
-// Package strictyaml parses the restricted, JSON-compatible subset of YAML that
-// bundle.yaml and compile.YAML accept. It is the only place the YAML library is
-// imported, so the library can be swapped without changing any other package.
+// Package strictyaml parses and writes the restricted, JSON-compatible subset of
+// YAML that bundle.yaml and compile.YAML accept. It is the only place the YAML
+// library is imported, so the library can be swapped without changing any other
+// package.
 //
 // The subset rejects duplicate keys, anchors, aliases, merge keys, explicit tags,
 // non-string mapping keys and more than one document. Every problem in a document is
@@ -115,6 +116,21 @@ func Parse(data []byte) (*Node, []Diagnostic) {
 		return nil, diags
 	}
 	return n, nil
+}
+
+// Marshal encodes v, a struct with yaml field tags, as block-style YAML that Parse
+// accepts.
+func Marshal(v any) ([]byte, error) {
+	var b bytes.Buffer
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(2)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
 }
 
 func syntaxError(err error) Diagnostic {

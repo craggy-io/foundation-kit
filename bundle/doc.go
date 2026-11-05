@@ -4,7 +4,8 @@
 // A bundle is a directory with a bundle.yaml manifest at its root. The manifest
 // names the bundle and lists its contributions, each with an ID, a kind and a path.
 // A folder without a bundle.yaml is not a bundle, and a manifest is never generated
-// from a folder layout or file names, not even by Live.Install.
+// from a folder layout or file names, not even by Live.Install. Live.Edit writes one
+// only from the contributions its caller names, one by one.
 // Load owns everything that is the same for every kind (reading, path safety,
 // identity, digests, linking and error reporting). A Compiler owns what a kind's
 // files mean. Kinds themselves are declared in package kind.
@@ -26,8 +27,9 @@
 //   - A Compiler reads its own bundle through Contribution.Files, and the bundles it
 //     declares as dependencies through Contribution.Dependency.
 //   - Live holds a host's current Catalog. Reload, Install and Uninstall each run
-//     Load again and swap the whole Catalog only if it succeeds. Children lists a
-//     folder of installed bundles for the options function to return.
+//     Load again and swap the whole Catalog only if it succeeds. Edit changes named
+//     contributions of an installed bundle and installs it. Children lists a folder
+//     of installed bundles for the options function to return.
 //   - An Asset is a file a contribution lists from assets/. A Definition carries its
 //     path and digest, and its bytes are read on demand.
 //
@@ -59,10 +61,10 @@
 //
 //   - Live.Catalog never blocks. It returns an immutable Catalog, which later changes
 //     replace rather than modify, so a task should read everything from one Catalog.
-//   - Reload, Install and Uninstall are serialized: one runs at a time, and each
-//     calls the options function and then any subscribers while holding that turn.
-//     The options function and subscribers must therefore not call Reload, Install
-//     or Uninstall, which would deadlock, but may call Catalog and Subscribe.
+//   - Reload, Install, Uninstall and Edit are serialized: one runs at a time, and
+//     each calls the options function and then any subscribers while holding that
+//     turn. The options function and subscribers must therefore not call any of
+//     them, which would deadlock, but may call Catalog and Subscribe.
 //   - Subscribers are called synchronously, in subscription order, before the change
 //     returns, so start long work on another goroutine.
 //   - Live coordinates changes within one process. It doesn't lock install folders
@@ -80,6 +82,7 @@
 //	Catalog, Definition         the accepted result
 //	All, Get, Lookup            read typed definitions from a Catalog
 //	Live, NewLive               hold, reload, install and uninstall a live Catalog
+//	Put                         a contribution for Live.Edit to add or replace
 //	Asset, ErrAssetChanged      read a definition's assets on demand
 //	Ref, ParseRef, Identity     how definitions and their owners are named
 //	Diagnostic, LoadError       how problems are reported

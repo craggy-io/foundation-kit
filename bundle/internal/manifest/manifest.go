@@ -43,34 +43,34 @@ func ValidID(id string) bool { return idPattern.MatchString(id) }
 
 // Manifest is the parsed form of bundle.yaml.
 type Manifest struct {
-	APIVersion    string
-	Metadata      Metadata
-	Dependencies  []Dependency
-	Contributions []Contribution
+	APIVersion    string         `yaml:"apiVersion"`
+	Metadata      Metadata       `yaml:"metadata"`
+	Dependencies  []Dependency   `yaml:"dependencies,omitempty"`
+	Contributions []Contribution `yaml:"contributions"`
 }
 
 // Metadata identifies the bundle.
 type Metadata struct {
-	ID      string // required; the bundle's identity
-	Version string // required; the author's release label
-	Title   string // optional
+	ID      string `yaml:"id"`              // required; the bundle's identity
+	Version string `yaml:"version"`         // required; the author's release label
+	Title   string `yaml:"title,omitempty"` // optional
 }
 
 // Dependency declares another bundle that this one's contributions may reference.
 type Dependency struct {
-	ID     string // required
-	Digest string // optional pin to exact content
+	ID     string `yaml:"id"`               // required
+	Digest string `yaml:"digest,omitempty"` // optional pin to exact content
 }
 
 // Contribution declares one entry in the bundle.
 type Contribution struct {
-	ID     string   // required; unique within the bundle
-	Kind   string   // required; kind.ParseID validates its form
-	Path   string   // required; relative to the bundle root, outside assets/
-	Assets []string // optional; relative to the bundle root, under assets/
+	ID     string   `yaml:"id"`               // required; unique within the bundle
+	Kind   string   `yaml:"kind"`             // required; kind.ParseID validates its form
+	Path   string   `yaml:"path"`             // required; relative to the bundle root, outside assets/
+	Assets []string `yaml:"assets,omitempty"` // optional; relative to the bundle root, under assets/
 
 	// Line is where the contribution starts in bundle.yaml, for diagnostics.
-	Line int
+	Line int `yaml:"-"`
 }
 
 // Diagnostic is a manifest problem. The bundle package converts it to a
@@ -137,6 +137,10 @@ func Parse(data []byte) (*Manifest, []Diagnostic) {
 	p.checkContributions(m)
 	return m, p.diags
 }
+
+// Encode writes m as bundle.yaml, in the order Parse reads it. Comments and line
+// numbers are not kept.
+func Encode(m *Manifest) ([]byte, error) { return strictyaml.Marshal(m) }
 
 type parser struct {
 	diags []Diagnostic

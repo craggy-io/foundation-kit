@@ -12,7 +12,7 @@ Kinds are declared in the [`kind`](../kind/README.md) package. Terms used here a
 
 ## Bundle layout
 
-A bundle is a directory with exactly one `bundle.yaml`, at its root. **Every bundle needs a real `bundle.yaml` on disk** (or in its embedded file system): a folder without one isn't a bundle, and nothing in the kit generates a manifest from a folder layout or file names, including `Live.Install`. Assets go in an `assets/` directory at the root. Everything else is laid out however suits the author, because the manifest gives each contribution's path.
+A bundle is a directory with exactly one `bundle.yaml`, at its root. **Every bundle needs a real `bundle.yaml` on disk** (or in its embedded file system): a folder without one isn't a bundle, and nothing in the kit generates a manifest from a folder layout or file names, including `Live.Install`. `Live.Edit` writes one only from the contributions its caller names. Assets go in an `assets/` directory at the root. Everything else is laid out however suits the author, because the manifest gives each contribution's path.
 
 ```text
 android-research/
@@ -231,6 +231,12 @@ go live.Run(ctx, 2*time.Second, func(err error) { log.Print(err) }) // poll for 
 // Install files that include their own bundle.yaml into installDir/<metadata.id>.
 id, err := live.Install(ctx, installDir, files)
 
+// Add or replace one contribution, and remove another, in installDir/user,
+// starting that bundle if it doesn't exist.
+_, err = live.Edit(ctx, installDir, "user",
+	[]bundle.Put{{ID: "helper", Kind: agentKind.ID(), Path: "agents/helper.star", Data: src}},
+	[]string{"old-helper"})
+
 // Remove it again. This fails, and changes nothing, if another bundle depends on it.
 err = live.Uninstall(ctx, installDir, id.ID)
 ```
@@ -240,8 +246,9 @@ err = live.Uninstall(ctx, installDir, id.ID)
 - **`Run`** calls `Reload` every interval until `ctx` is cancelled, sending errors to a callback rather than stopping.
 - **`Install`** stages the files in a hidden folder under the install folder, moves any existing `dir/<metadata.id>` aside, moves the new bundle into place, and reloads. If that load fails, it puts everything back and returns the `*LoadError`. The options function must list the install folder, for example with `Children`.
 - **`Uninstall`** moves `dir/<id>` aside and reloads, putting it back if the load fails.
+- **`Edit`** is explicit editing, not manifest generation: the caller names each contribution's ID, kind and path. It reads `dir/<id>`, or starts a bundle with version `1.0.0`, sets each `Put` and drops each removed ID with its file, rewrites `bundle.yaml` (keeping metadata, dependencies and assets, but not comments), and installs the result through `Install`, or `Uninstall` when nothing is left.
 - **Compile reuse:** a reload calls a compiler only if the contribution's bundle digest, origin, declared dependencies' digests or kind changed. Reused values are still checked against their kind's schema.
-- **Concurrency:** changes are serialized. The options function and subscribers run during a change, so they must not call `Reload`, `Install` or `Uninstall`.
+- **Concurrency:** changes are serialized. The options function and subscribers run during a change, so they must not call `Reload`, `Install`, `Uninstall` or `Edit`.
 
 ## Ready-made compilers
 
@@ -281,7 +288,7 @@ Nothing is started by `Load`. Services read what they need from the catalog and 
 | `pipeline.go` | The stages that `Load` runs |
 | `compiler.go` | `Compile`, `AnyCompiler`, `Compiler[T]`, `Compiled[T]`, `Contribution` |
 | `catalog.go` | `Catalog`, `Definition[T]`, `All`, `Get`, `Lookup` |
-| `live.go` | `Live`, `NewLive`, reloading, `Install` and `Uninstall` |
+| `live.go` | `Live`, `NewLive`, reloading, `Install`, `Uninstall` and `Edit` |
 | `asset.go` | `Asset`, `ErrAssetChanged` |
 | `source.go` | `Source`, `Dir`, `Embedded`, `Children` |
 | `reference.go` | `Ref`, `ParseRef`, `Identity` |
@@ -328,7 +335,7 @@ Working and tested:
 - `Load`, with every stage above, and `Options`, `Override`, `BundleOverride` (chains, cycles, unknown owners)
 - Global kinds through `kind.Global`, `bundle.id_conflict` and `Lookup`
 - `Contribution.Dependency`
-- `Live`: `NewLive`, `Catalog`, `Reload`, `Run`, `Subscribe`, `Install`, `Uninstall`, with compile reuse, tested under `-race`
+- `Live`: `NewLive`, `Catalog`, `Reload`, `Run`, `Subscribe`, `Install`, `Uninstall`, `Edit`, with compile reuse, tested under `-race`
 - `Children`
 - `Dir`, through `os.OpenRoot`, and `Embedded`
 - `Catalog`, `Catalog.Digest`, `Catalog.Owners`, `Catalog.Explain`, `Catalog.Overrides`, `All` and `Get`

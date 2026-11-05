@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -313,6 +314,92 @@ func TestLiveUninstall(t *testing.T) {
 
 // assertOnlyInstalled checks that dir holds exactly the given folders, with no
 // staging folders left behind.
+func TestLiveEdit(t *testing.T) {
+	ctx := context.Background()
+	h := newHost(t, "testdata/layers/shipped")
+	l := h.live(t)
+	final := filepath.Join(h.installed, "user")
+	value := func(id string) string {
+		def, ok := bundle.Lookup(l.Catalog(), agent, id)
+		if !ok {
+			return ""
+		}
+		return def.Value
+	}
+
+	// Create: there is no bundle yet, so Edit starts one.
+	id, err := l.Edit(ctx, h.installed, "user", []bundle.Put{
+		{ID: "helper", Kind: agent.ID(), Path: "agents/helper.txt", Data: []byte("v1")},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id.ID != "user" || id.Version != "1.0.0" || id.Origin != final || value("helper") != "v1" {
+		t.Fatalf("Identity = %+v, helper = %q", id, value("helper"))
+	}
+
+	// Edits keep metadata and assets they don't name, and a moved file goes.
+	write(t, final, "bundle.yaml", "# comment\napiVersion: craggy.io/bundle/v1\n"+
+		"metadata: {id: user, version: '2', title: Mine}\ncontributions:\n"+
+		"  - {id: helper, kind: example.agent@1, path: agents/helper.txt, assets: [assets/a.txt]}\n")
+	write(t, final, "assets/a.txt", "asset")
+	if _, err := l.Edit(ctx, h.installed, "user", []bundle.Put{
+		{ID: "helper", Kind: agent.ID(), Path: "helper.txt", Data: []byte("v2")},
+		{ID: "other", Kind: agent.ID(), Path: "other.txt", Data: []byte("other")},
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	def, _ := bundle.Lookup(l.Catalog(), agent, "helper")
+	if def.Value != "v2" || def.Owner.Version != "2" || len(def.Assets) != 1 || value("other") != "other" {
+		t.Fatalf("helper = %+v, other = %q", def, value("other"))
+	}
+	manifest, _ := os.ReadFile(filepath.Join(final, "bundle.yaml"))
+	if !strings.Contains(string(manifest), "title: Mine") {
+		t.Errorf("bundle.yaml lost its title:\n%s", manifest)
+	}
+	if _, err := os.Stat(filepath.Join(final, "agents/helper.txt")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the old path of helper is still there: %v", err)
+	}
+
+	// Remove drops the contribution and its file.
+	if _, err := l.Edit(ctx, h.installed, "user", nil, []string{"other"}); err != nil {
+		t.Fatal(err)
+	}
+	if value("other") != "" || value("helper") != "v2" {
+		t.Errorf("after remove: other = %q, helper = %q", value("other"), value("helper"))
+	}
+	if _, err := os.Stat(filepath.Join(final, "other.txt")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("other.txt is still there: %v", err)
+	}
+	if _, err := l.Edit(ctx, h.installed, "user", nil, []string{"other"}); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("removing an undeclared contribution = %v", err)
+	}
+
+	// A failing edit is rolled back: the shipped bundle already defines reviewer.
+	before := l.Catalog()
+	_, err = l.Edit(ctx, h.installed, "user", []bundle.Put{
+		{ID: "helper", Kind: agent.ID(), Path: "helper.txt", Data: []byte("v3")},
+		{ID: "reviewer", Kind: agent.ID(), Path: "reviewer.txt", Data: []byte("mine")},
+	}, nil)
+	bundletest.RequireCode(t, err, bundle.CodeIDConflict)
+	if l.Catalog() != before {
+		t.Error("a failed edit changed the catalog")
+	}
+	if data, _ := os.ReadFile(filepath.Join(final, "helper.txt")); string(data) != "v2" {
+		t.Errorf("a failed edit changed the installed files: %q", data)
+	}
+	assertOnlyInstalled(t, h.installed, "user")
+
+	// Removing the last contribution uninstalls the bundle.
+	if id, err := l.Edit(ctx, h.installed, "user", nil, []string{"helper"}); err != nil || id != (bundle.Identity{}) {
+		t.Fatalf("Edit = %+v, %v", id, err)
+	}
+	if value("helper") != "" {
+		t.Error("helper is still in the catalog")
+	}
+	assertOnlyInstalled(t, h.installed)
+}
+
 func assertOnlyInstalled(t *testing.T, dir string, want ...string) {
 	t.Helper()
 	entries, err := os.ReadDir(dir)

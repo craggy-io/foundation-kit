@@ -1,6 +1,9 @@
 package bundle
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Severity says whether a Diagnostic rejects the load.
 type Severity string
@@ -59,12 +62,38 @@ type LoadError struct {
 	Diagnostics []Diagnostic
 }
 
-// Error summarizes the report. Read Diagnostics for the full list.
+// String formats d as "bundle:path:line:col: severity: message (code)",
+// leaving out the parts d doesn't have.
+func (d Diagnostic) String() string {
+	var b strings.Builder
+	for _, part := range []string{d.Bundle, d.Path} {
+		if part != "" {
+			b.WriteString(part + ":")
+		}
+	}
+	if d.Line > 0 {
+		fmt.Fprintf(&b, "%d:", d.Line)
+		if d.Column > 0 {
+			fmt.Fprintf(&b, "%d:", d.Column)
+		}
+	}
+	if b.Len() > 0 {
+		b.WriteString(" ")
+	}
+	fmt.Fprintf(&b, "%s: %s (%s)", d.Severity, d.Message, d.Code)
+	return b.String()
+}
+
+// Error lists every diagnostic, one per line, each formatted by
+// Diagnostic.String.
 func (e *LoadError) Error() string {
 	if len(e.Diagnostics) == 0 {
 		return "bundle: load failed"
 	}
-	first := e.Diagnostics[0]
-	return fmt.Sprintf("bundle: load failed with %d problem(s), first: %s: %s",
-		len(e.Diagnostics), first.Code, first.Message)
+	var b strings.Builder
+	fmt.Fprintf(&b, "bundle: load failed with %d problem(s):", len(e.Diagnostics))
+	for _, d := range e.Diagnostics {
+		b.WriteString("\n  " + d.String())
+	}
+	return b.String()
 }
