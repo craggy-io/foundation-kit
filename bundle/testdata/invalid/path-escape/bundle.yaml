@@ -1,0 +1,11 @@
+# Expected: bundle.path_forbidden, because the path leaves the bundle root.
+apiVersion: craggy.io/bundle/v1
+
+metadata:
+  id: invalid.path-escape
+  version: 0.1.0
+
+contributions:
+  - id: outside
+    kind: example.script@1
+    path: ../outside.star

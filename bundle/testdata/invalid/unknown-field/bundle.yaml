@@ -1,0 +1,9 @@
+# Expected: bundle.manifest_invalid, because "owner" is not a manifest field.
+apiVersion: craggy.io/bundle/v1
+owner: platform
+
+metadata:
+  id: invalid.unknown-field
+  version: 0.1.0
+
+contributions: []
