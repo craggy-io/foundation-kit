@@ -5,6 +5,7 @@ package link
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -18,6 +19,7 @@ const (
 	codeDependencyMissing    = "bundle.dependency_missing"
 	codeDependencyMismatch   = "bundle.dependency_mismatch"
 	codeOverrideInvalid      = "bundle.override_invalid"
+	codeIDConflict           = "bundle.id_conflict"
 )
 
 // Owner is one bundle or provider.
@@ -57,6 +59,26 @@ type Input struct {
 	Owners    []Owner
 	Nodes     []Node
 	Overrides []Override
+
+	// OwnerOverrides are bundle-level overrides: Target and Replacement are owner
+	// IDs, not references. Each expands into one Override per contribution ID that
+	// the replacement chain shares with the target.
+	OwnerOverrides []Override
+
+	// Global lists the kinds ("namespace.name@N") whose effective definitions must
+	// have catalog-wide unique contribution IDs.
+	Global map[string]bool
+}
+
+// Result is a successful resolution.
+type Result struct {
+	// Bindings maps each reference a node reports, and each override target, to its
+	// final target.
+	Bindings map[string]string
+
+	// Overrides maps each applied override target to its replacement, including
+	// those expanded from OwnerOverrides.
+	Overrides map[string]string
 }
 
 // Diagnostic is a link problem. The bundle package converts it to a
@@ -70,8 +92,8 @@ type Diagnostic struct {
 }
 
 // Resolve checks the graph and returns each reference's final target, with
-// overrides applied. The result has an entry for every reference a node reports and
-// for every override target.
+// overrides applied. The result's Bindings has an entry for every reference a node
+// reports and for every override target.
 //
 // Input order never picks a winner: duplicate owner IDs, duplicate references and a
 // target overridden twice are all errors. A reference into another owner must be to
@@ -79,7 +101,12 @@ type Diagnostic struct {
 // dependency must have the pinned digest. An override's target and replacement must
 // both exist and have the same kind, and a replacement can't itself be overridden,
 // so that every binding takes exactly one step.
-func Resolve(in Input) (map[string]string, []Diagnostic) {
+//
+// OwnerOverrides are expanded first (see expandOwnerOverrides), and the overrides
+// they produce are checked exactly like the explicit ones. Finally, every effective
+// definition of a Global kind (one that isn't an override target) must have a
+// contribution ID that no other effective definition of that kind has.
+func Resolve(in Input) (Result, []Diagnostic) {
 	var diags []Diagnostic
 	report := func(d Diagnostic) { diags = append(diags, d) }
 
@@ -122,14 +149,18 @@ func Resolve(in Input) (map[string]string, []Diagnostic) {
 		}
 	}
 
+	expanded, ownerDiags := expandOwnerOverrides(in.OwnerOverrides, owners, in.Nodes)
+	diags = append(diags, ownerDiags...)
+	all := append(append([]Override(nil), in.Overrides...), expanded...)
+
 	// Overrides: each target at most once, both ends present with the same kind.
 	// A target named by two overrides is reported for both, so that neither wins.
 	targetCount := map[string]int{}
-	for _, o := range in.Overrides {
+	for _, o := range all {
 		targetCount[o.Target]++
 	}
 	overrides := map[string]string{}
-	for _, o := range in.Overrides {
+	for _, o := range all {
 		target, hasTarget := nodes[o.Target]
 		replacement, hasReplacement := nodes[o.Replacement]
 		var problem string
@@ -187,6 +218,8 @@ func Resolve(in Input) (map[string]string, []Diagnostic) {
 		}
 	}
 
+	diags = append(diags, checkGlobal(in.Global, in.Nodes, overrides)...)
+
 	if len(diags) > 0 {
 		sort.SliceStable(diags, func(i, j int) bool {
 			a, b := diags[i], diags[j]
@@ -201,7 +234,153 @@ func Resolve(in Input) (map[string]string, []Diagnostic) {
 			}
 			return a.Message < b.Message
 		})
+		return Result{}, diags
+	}
+	return Result{Bindings: bindings, Overrides: overrides}, nil
+}
+
+// expandOwnerOverrides turns bundle-level overrides into reference overrides.
+//
+// Each owner may be the target of at most one bundle-level override, so the
+// overrides form chains, such as shipped replaced by user replaced by project. For
+// every contribution x of a target T, the replacement is T's highest replacement in
+// the chain that also has x, so every override it produces takes one step: in that
+// chain, shipped#x and user#x both resolve to project#x when all three have x, and
+// shipped#x resolves to user#x when project lacks it. A contribution that only a
+// replacement has is simply added.
+//
+// Unknown owners, self-overrides, owners targeted twice and cycles are reported, and
+// nothing is expanded from an invalid set, because its chains are undefined.
+func expandOwnerOverrides(in []Override, owners map[string]Owner, nodes []Node) ([]Override, []Diagnostic) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	var diags []Diagnostic
+	report := func(o Override, problem string) {
+		diags = append(diags, Diagnostic{Code: codeOverrideInvalid, Owner: o.Target,
+			Message: fmt.Sprintf("bundle override of %q with %q: %s", o.Target, o.Replacement, problem),
+			Related: []string{o.Replacement}})
+	}
+	targetCount := map[string]int{}
+	for _, o := range in {
+		targetCount[o.Target]++
+	}
+	next := map[string]string{}
+	for _, o := range in {
+		_, hasTarget := owners[o.Target]
+		_, hasReplacement := owners[o.Replacement]
+		switch {
+		case o.Target == o.Replacement:
+			report(o, "an owner can't replace itself")
+		case !hasTarget:
+			report(o, "the target is not among the loaded bundles and providers")
+		case !hasReplacement:
+			report(o, "the replacement is not among the loaded bundles and providers")
+		case targetCount[o.Target] > 1:
+			report(o, fmt.Sprintf("%q is the target of %d bundle overrides", o.Target, targetCount[o.Target]))
+		default:
+			next[o.Target] = o.Replacement
+		}
+	}
+
+	// Cycles: walk each chain, and report each cycle once, at its smallest owner.
+	reported := map[string]bool{}
+	for start := range next {
+		seen := map[string]bool{}
+		for at := start; at != ""; at = next[at] {
+			if !seen[at] {
+				seen[at] = true
+				continue
+			}
+			var cycle []string
+			for c := at; ; {
+				cycle = append(cycle, c)
+				if c = next[c]; c == at {
+					break
+				}
+			}
+			sort.Strings(cycle)
+			if !reported[cycle[0]] {
+				reported[cycle[0]] = true
+				diags = append(diags, Diagnostic{Code: codeOverrideInvalid, Owner: cycle[0],
+					Message: fmt.Sprintf("bundle overrides form a cycle: %s", strings.Join(cycle, ", ")),
+					Related: cycle[1:]})
+			}
+			break
+		}
+	}
+	if len(diags) > 0 {
 		return nil, diags
 	}
-	return bindings, nil
+
+	ids := map[string]map[string]bool{} // owner to its contribution IDs
+	for _, n := range nodes {
+		_, id, _ := strings.Cut(n.Ref, "#")
+		if ids[n.Owner] == nil {
+			ids[n.Owner] = map[string]bool{}
+		}
+		ids[n.Owner][id] = true
+	}
+	var out []Override
+	for _, n := range nodes {
+		if _, ok := next[n.Owner]; !ok {
+			continue
+		}
+		_, id, _ := strings.Cut(n.Ref, "#")
+		final := ""
+		for r := next[n.Owner]; r != ""; r = next[r] {
+			if ids[r][id] {
+				final = r + "#" + id
+			}
+		}
+		if final != "" {
+			out = append(out, Override{Target: n.Ref, Replacement: final})
+		}
+	}
+	return out, nil
+}
+
+// checkGlobal reports effective definitions of a global kind that share a
+// contribution ID across owners. An override target isn't effective, because its
+// replacement stands in for it.
+func checkGlobal(global map[string]bool, list []Node, overrides map[string]string) []Diagnostic {
+	if len(global) == 0 {
+		return nil
+	}
+	type key struct{ kind, id string }
+	groups := map[key][]string{}
+	for _, n := range list {
+		if !global[n.Kind] {
+			continue
+		}
+		if _, overridden := overrides[n.Ref]; overridden {
+			continue
+		}
+		_, id, _ := strings.Cut(n.Ref, "#")
+		k := key{n.Kind, id}
+		if !slices.Contains(groups[k], n.Ref) {
+			groups[k] = append(groups[k], n.Ref)
+		}
+	}
+	var diags []Diagnostic
+	for k, refs := range groups {
+		if len(refs) < 2 {
+			continue
+		}
+		sort.Strings(refs)
+		for _, ref := range refs {
+			var others []string
+			for _, o := range refs {
+				if o != ref {
+					others = append(others, o)
+				}
+			}
+			owner, _, _ := strings.Cut(ref, "#")
+			diags = append(diags, Diagnostic{Code: codeIDConflict, Owner: owner, Ref: ref,
+				Message: fmt.Sprintf("kind %s needs catalog-wide unique IDs, but %q is also defined by %s; "+
+					"rename one, or replace one with an override", k.kind, k.id, strings.Join(others, ", ")),
+				Related: others})
+		}
+	}
+	return diags
 }

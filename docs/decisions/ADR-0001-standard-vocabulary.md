@@ -56,6 +56,8 @@ Adopt the vocabulary below for exported names, package and file names, manifest 
 | **Owner** | The bundle or provider a definition came from | Who maintains it |
 | **Catalog** | The immutable set of accepted definitions and their owners' identities | A registry of live objects |
 | **Ref** | A definition's qualified name, `owner-id#id` | A file path |
+| **Global kind** | A kind whose effective definitions have catalog-wide unique contribution IDs, so they can be looked up by ID alone ([ADR-0002](ADR-0002-live-catalogs-and-layering.md)) | A kind registered globally |
+| **Effective definition** | A definition that isn't an override target, and so is what readers see | The first definition found |
 | **Identity** | An owner's ID, version, digest and origin | Only its ID |
 
 ### Bundles
@@ -73,6 +75,8 @@ Adopt the vocabulary below for exported names, package and file names, manifest 
 | **Digest** | A hash of exact content | A version |
 | **Dependency** | A bundle that another bundle's manifest declares it may reference | A Go dependency |
 | **Override** | A deliberate replacement of one ref with another, chosen by the host | A precedence rule based on order |
+| **Bundle override** | A deliberate replacement of one owner by another, which expands into one override per shared contribution ID ([ADR-0002](ADR-0002-live-catalogs-and-layering.md)) | A search path |
+| **Live catalog** | A `bundle.Live`: the current catalog of a running host, replaced whole by each successful reload | A catalog changed in place |
 | **Diagnostic** | One reported problem, with a stable code | A log line |
 
 ### Settings
@@ -91,6 +95,9 @@ Adopt the vocabulary below for exported names, package and file names, manifest 
 | **Compile** | Turn one contribution into a definition |
 | **Link** | Resolve dependencies, refs and overrides across a candidate catalog |
 | **Accept** | Record digests and publish an immutable catalog |
+| **Reload** | Run `Load` again for a live catalog, and swap it in only if it succeeds |
+| **Install** | Place a bundle, with its own manifest, in an install folder through a validated reload |
+| **Uninstall** | Remove an installed bundle through a validated reload |
 | **Run** | Own a blocking loop until cancellation or failure |
 | **Close** | Release what `Open` acquired |
 

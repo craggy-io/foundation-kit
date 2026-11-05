@@ -1,0 +1,6 @@
+apiVersion: craggy.io/bundle/v1
+metadata: {id: install.dependent, version: 1.0.0}
+dependencies:
+  - id: install.good
+contributions:
+  - {id: user, kind: example.agent@1, path: user.txt}

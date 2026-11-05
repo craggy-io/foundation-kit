@@ -1,0 +1,4 @@
+apiVersion: craggy.io/bundle/v1
+metadata: {id: install.good, version: 2.0.0}
+contributions:
+  - {id: helper, kind: example.agent@1, path: missing.txt}

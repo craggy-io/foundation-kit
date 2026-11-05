@@ -2,13 +2,13 @@
 
 Use this guide when editing this repository or building on its Go module, `github.com/craggy-io/foundation-kit`. Consumers should give this guide to their coding agent explicitly, because installing a dependency doesn't mean its `AGENTS.md` gets read.
 
-Use the terms in [ADR-0001](docs/decisions/ADR-0001-standard-vocabulary.md), and don't use its retired terms. [`docs/decisions`](docs/decisions) is binding. [`docs/research`](docs/research) is background only: its proposals conflict, so never treat one as a decision.
+Use the terms in [ADR-0001](docs/decisions/ADR-0001-standard-vocabulary.md), and don't use its retired terms. [ADR-0002](docs/decisions/ADR-0002-live-catalogs-and-layering.md) decides how catalogs are layered, reloaded and installed into. [`docs/decisions`](docs/decisions) is binding. [`docs/research`](docs/research) is background only: its proposals conflict, so never treat one as a decision.
 
 ## Current state
 
 This kit is early, so check before relying on anything:
 
-- The `bundle` pipeline works end to end, but no consumer uses it yet, so expect its API to change when the first real kinds are ported.
+- The `bundle` pipeline works end to end, including `Live` reloading and installs. Consumers are being migrated to it now, so expect its API to change as real kinds are ported.
 - Each package's README has an implementation status list. Update it in the same change as the code.
 
 ## Choose the owning package
@@ -17,6 +17,7 @@ This kit is early, so check before relying on anything:
 | --- | --- |
 | Declare a kind, a schema or a built-in | [`kind`](kind/README.md) |
 | Load bundles and built-ins, read the catalog | [`bundle`](bundle/README.md) |
+| Reload, install or uninstall bundles at run time | `bundle.Live` |
 | Compile a single-file contribution | `bundle/compile` |
 | Validate a kind against JSON Schema | `kind/jsonschema` |
 | Test a kind, compiler or bundle | `bundle/bundletest` |
@@ -72,12 +73,14 @@ If not, put it in the consumer. Kinds and compilers for a concept live with the 
 ## Building on the kit
 
 - **Kinds:** declare each with `kind.New` next to the Go type it produces, written `namespace.name@N`. Change `N` when the meaning of the content changes.
-- **Compilers:** use `bundle/compile` when a file maps straight onto a struct. A custom `Compiler` must have no side effects, and must read only through `Contribution.Files` and `Contribution.Assets`.
-- **Definitions:** read them with `bundle.All` and `bundle.Get`. Start services from those definitions after `Load` returns, never during it.
+- **Manifests:** every bundle has a real `bundle.yaml`, in shipped content and test fixtures alike. Never generate one from a folder layout or file names, and never add a loader beside `bundle.Load`.
+- **Compilers:** use `bundle/compile` when a file maps straight onto a struct. A custom `Compiler` must have no side effects, must read only through `Contribution.Files`, `Contribution.Assets` and `Contribution.Dependency`, and must give the same result for the same inputs, because `Live` reuses compiled values.
+- **Definitions:** read them with `bundle.All`, `bundle.Get` and, for kinds declared with `kind.Global()`, `bundle.Lookup`. Start services from those definitions after `Load` returns, never during it.
+- **Reloading:** hold a running host's catalog in a `bundle.Live`, and install or remove bundles through `Live.Install` and `Live.Uninstall`, so that every change is a validated `Load`.
 - **Assets:** put files that consumers read on demand under `assets/`, and list them on the contributions that use them. Handle read errors, because `Asset.Read` and `Asset.Open` can fail after `Load` has succeeded.
 - **Built-ins:** bump `Provider.Version` whenever a built-in's value changes. The catalog digest can't detect the change otherwise.
 - **Schemas:** test each one against its Go type with `bundletest.CheckSample`.
-- **Overrides:** replace a definition only with an explicit `Override`. Order never picks a winner.
+- **Overrides:** replace a definition only with an explicit `Override`, or a whole bundle with a `BundleOverride`. Order never picks a winner.
 - **Trust:** compilers run in-process, so loading isn't a sandbox. Only load trusted content.
 
 ## Developing and verifying

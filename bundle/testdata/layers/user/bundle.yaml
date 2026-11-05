@@ -1,0 +1,5 @@
+apiVersion: craggy.io/bundle/v1
+metadata: {id: layers.user, version: 1.0.0}
+contributions:
+  - {id: reviewer, kind: example.agent@1, path: reviewer.txt}
+  - {id: planner, kind: example.agent@1, path: planner.txt}

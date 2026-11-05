@@ -1,0 +1,4 @@
+apiVersion: craggy.io/bundle/v1
+metadata: {id: deps.lib, version: 1.0.0}
+contributions:
+  - {id: strings, kind: example.script@1, path: lib/strings.star}

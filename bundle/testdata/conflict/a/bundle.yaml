@@ -1,0 +1,4 @@
+apiVersion: craggy.io/bundle/v1
+metadata: {id: conflict.a, version: 1.0.0}
+contributions:
+  - {id: reviewer, kind: example.agent@1, path: reviewer.txt}

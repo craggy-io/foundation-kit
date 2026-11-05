@@ -26,6 +26,10 @@ type Options struct {
 	// Overrides lists deliberate replacements. Without one, two definitions that
 	// claim the same Ref are an error.
 	Overrides []Override
+
+	// BundleOverrides lists deliberate replacements of whole owners. Each expands
+	// into one Override per contribution ID its Replacement shares with its Target.
+	BundleOverrides []BundleOverride
 }
 
 // Override makes references to Target resolve to Replacement.
@@ -37,6 +41,32 @@ type Options struct {
 type Override struct {
 	Target      Ref
 	Replacement Ref
+}
+
+// BundleOverride makes one bundle or provider (Replacement) layer over another
+// (Target). Both are owner IDs: a bundle's metadata.id or a kind.Provider.ID.
+//
+// Every contribution ID that Replacement shares with Target behaves exactly like an
+// Override{Target: {Target, id}, Replacement: {Replacement, id}}, with the same rules:
+// the kinds must match, and the target must not also be named by an explicit
+// Override. Contributions that only Replacement has are simply added, and those only
+// Target has are kept.
+//
+// An owner can be the Target of at most one BundleOverride, so they form chains, for
+// example project over user over shipped:
+//
+//	BundleOverrides: []bundle.BundleOverride{
+//		{Target: "shipped", Replacement: "user"},
+//		{Target: "user", Replacement: "project"},
+//	}
+//
+// A chain is flattened so each Override takes one step: every contribution resolves
+// to the highest owner in the chain that has its ID. Unknown owners, an owner
+// replacing itself, an owner targeted twice, and cycles are CodeOverrideInvalid.
+// Catalog.Overrides and Catalog.Explain report every replacement that was applied.
+type BundleOverride struct {
+	Target      string
+	Replacement string
 }
 
 // Load reads every Source and Provider, and returns a complete Catalog. If anything
@@ -59,8 +89,10 @@ type Override struct {
 //  4. Compile: call each contribution's Compiler.
 //  5. Check: call Kind.Validate on every compiled value and built-in, so that schemas
 //     apply however a definition was supplied (CodeSchemaInvalid).
-//  6. Link: combine definitions from bundles and providers, then resolve declared
-//     dependencies, Compiled.Refs and Overrides (internal/link).
+//  6. Link: combine definitions from bundles and providers, expand BundleOverrides,
+//     then resolve declared dependencies, Compiled.Refs and Overrides, and check
+//     that effective definitions of global kinds have unique contribution IDs
+//     (CodeIDConflict) (internal/link).
 //  7. Accept: compute digests (internal/digest) and publish the immutable Catalog.
 //
 // Each stage collects problems instead of stopping at the first. A stage only
@@ -75,7 +107,14 @@ type Override struct {
 // only runs once every earlier stage has passed everywhere. If ctx is cancelled,
 // Load returns ctx's error instead of a *LoadError.
 func Load(ctx context.Context, o Options) (*Catalog, error) {
-	l := &loader{kinds: map[kind.ID]kind.AnyKind{}, compilers: map[kind.ID]AnyCompiler{}}
+	return load(ctx, o, nil)
+}
+
+// load is Load, optionally reusing compiled values from prev. Live passes the
+// current catalog, so that a reload only compiles contributions whose inputs
+// changed. Everything else runs exactly as in Load.
+func load(ctx context.Context, o Options, prev *Catalog) (*Catalog, error) {
+	l := &loader{kinds: map[kind.ID]kind.AnyKind{}, compilers: map[kind.ID]AnyCompiler{}, prev: prev}
 	l.checkCompilers(o.Compilers)
 
 	var bundles []*loadedBundle
@@ -100,9 +139,9 @@ func Load(ctx context.Context, o Options) (*Catalog, error) {
 		return nil, l.loadError()
 	}
 
-	bindings := l.link(bundles, providers, o.Overrides)
+	res := l.link(bundles, providers, o)
 	if l.failed() {
 		return nil, l.loadError()
 	}
-	return accept(bundles, providers, o.Overrides, bindings), nil
+	return accept(bundles, providers, o, res), nil
 }

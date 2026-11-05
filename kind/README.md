@@ -30,6 +30,16 @@ var Profile = kind.New[ProfileSpec]("example.profile", 1, kind.WithSchema(profil
 
 `Kind.Validate` checks that a value has the kind's Go type, then passes the value's JSON form to the schema. A schema and a Go type can drift apart, so test them together with `bundletest.CheckSample`.
 
+## Global kinds
+
+Most definitions are named by their full reference, `owner-id#id`. Some are looked up by contribution ID alone, whichever bundle defines them, such as agent or profile names. Declare those kinds global:
+
+```go
+var Agent = kind.New[AgentSpec]("example.agent", 1, kind.Global())
+```
+
+`bundle.Load` then rejects two effective definitions of the kind with the same contribution ID (`bundle.id_conflict`), and `bundle.Lookup` finds one by that ID.
+
 ## Definitions from Go code
 
 Definitions can come from Go code as well as from bundles, and both end up in the same catalog. A `Provider` supplies built-ins, which need no compiler:
@@ -62,7 +72,7 @@ A kind describes a type of definition. It isn't a general type system:
 Already working and tested:
 
 - `ID`, `ParseID` and `ID.Validate`
-- `New`, `WithSchema` and `Kind.Validate`
+- `New`, `WithSchema`, `Global` and `Kind.Validate`
 - `Provider` and `Builtin`
 
 - `jsonschema.New`, backed by `github.com/santhosh-tekuri/jsonschema/v6`. It does no I/O, so a `$ref` outside the document is an error.

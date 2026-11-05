@@ -2,9 +2,17 @@ package bundle
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/craggy-io/foundation-kit/bundle/internal/manifest"
 )
+
+const manifestFileName = manifest.FileName
 
 // Source supplies the files for exactly one bundle. The root of the file system it
 // opens must contain bundle.yaml.
@@ -68,4 +76,51 @@ func (s embeddedSource) Origin() string { return s.name }
 // caller owns fsys.
 func (s embeddedSource) Open(ctx context.Context) (fs.FS, func() error, error) {
 	return s.fsys, func() error { return nil }, nil
+}
+
+// Children returns a Dir Source for each immediate subdirectory of dir that has a
+// bundle.yaml at its root, sorted by name. Use it to list a folder of installed
+// bundles, such as the dir that Live.Install writes to.
+//
+// It doesn't read or validate any bundle, which is Load's job. A missing dir gives no
+// Sources and no error, so an install folder needn't exist yet. These are skipped
+// silently, and a host that wants them to be errors must check for itself:
+//
+//   - a subdirectory with no bundle.yaml at its root
+//   - a subdirectory whose name starts with ".", which is where Live stages installs
+//   - files, and symlinks even to directories
+//
+// Other I/O errors are all reported, joined, with no Sources.
+func Children(ctx context.Context, dir string) ([]Source, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("bundle: listing %s: %w", dir, err)
+	}
+	var sources []Source
+	var errs []error
+	for _, e := range entries { // os.ReadDir sorts by name
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		_, err := os.Lstat(filepath.Join(path, manifestFileName))
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			continue
+		case err != nil:
+			errs = append(errs, fmt.Errorf("bundle: %s: %w", path, err))
+			continue
+		}
+		sources = append(sources, Dir(path))
+	}
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+	return sources, nil
 }

@@ -26,15 +26,19 @@ type Definition[T any] struct {
 // from bundles and from providers in one list, and is read through All and Get so
 // that consumers receive typed values.
 //
-// To support reloading later, build a new Catalog with Load and swap the pointer.
-// A Catalog is never changed in place. Its assets' bytes stay in their Source, so
-// reading an Asset can fail if that Source has since changed.
+// A Catalog is never changed in place: Live reloads by building a new one and
+// swapping the pointer. Its assets' bytes stay in their Source, so reading an Asset
+// can fail if that Source has since changed.
 type Catalog struct {
 	digest      string
 	owners      []Identity
 	order       []Ref // every key of definitions, sorted
 	definitions map[Ref]storedDefinition
-	overrides   map[Ref]Ref // target to replacement, as applied by Load
+	overrides   map[Ref]Ref                // target to replacement, as applied by Load
+	explicit    map[Ref]bool               // targets named by Options.Overrides
+	layers      map[string]string          // Options.BundleOverrides, target owner to replacement owner
+	global      map[kind.ID]map[string]Ref // effective definitions of global kinds, by contribution ID
+	compiled    map[compileKey]compiledValue
 }
 
 // storedDefinition is a Definition with its type erased. Only Get reads the value.
@@ -45,10 +49,15 @@ type storedDefinition struct {
 	assets []Asset
 }
 
-// All returns every definition of kind k in c, sorted by Ref.
+// All returns every effective definition of kind k in c, sorted by Ref. Each
+// appears once, under its own Ref: an override target is left out, because its
+// replacement is listed instead. Use Get to read a target through its override.
 func All[T any](c *Catalog, k *kind.Kind[T]) []Definition[T] {
 	var defs []Definition[T]
 	for _, ref := range c.order {
+		if _, overridden := c.overrides[ref]; overridden {
+			continue
+		}
 		if def, ok := Get(c, k, ref); ok {
 			defs = append(defs, def)
 		}
@@ -57,7 +66,8 @@ func All[T any](c *Catalog, k *kind.Kind[T]) []Definition[T] {
 }
 
 // Get returns the definition at ref. It reports false if ref does not exist in c or
-// belongs to a different kind.
+// belongs to a different kind. If ref is an override target, Get returns the
+// replacement's value, owner and assets, with Ref still set to ref.
 func Get[T any](c *Catalog, k *kind.Kind[T], ref Ref) (Definition[T], bool) {
 	stored, ok := c.definitions[ref]
 	if !ok || stored.kind != k.ID() {
@@ -73,6 +83,37 @@ func Get[T any](c *Catalog, k *kind.Kind[T], ref Ref) (Definition[T], bool) {
 		Owner:  stored.owner,
 		Assets: slices.Clone(stored.assets),
 	}, true
+}
+
+// Lookup returns the effective definition of a global kind (see kind.Global) whose
+// contribution ID is id, whichever bundle or provider owns it. Load guarantees there
+// is at most one. The result's Ref is the definition's own Ref, so after an override
+// it names the replacement.
+//
+// It reports false if no effective definition has that ID, and always reports false
+// for a kind declared without kind.Global, whose IDs aren't unique across owners:
+// read those with Get or All instead.
+func Lookup[T any](c *Catalog, k *kind.Kind[T], id string) (Definition[T], bool) {
+	if !k.Global() {
+		return Definition[T]{}, false
+	}
+	ref, ok := c.global[k.ID()][id]
+	if !ok {
+		return Definition[T]{}, false
+	}
+	return Get(c, k, ref)
+}
+
+// Overrides returns every replacement Load applied, from Options.Overrides and from
+// expanding Options.BundleOverrides, sorted by Target. A consumer can use it to
+// report which definitions are shadowed.
+func (c *Catalog) Overrides() []Override {
+	out := make([]Override, 0, len(c.overrides))
+	for target, replacement := range c.overrides {
+		out = append(out, Override{Target: target, Replacement: replacement})
+	}
+	slices.SortFunc(out, func(a, b Override) int { return compareRefs(a.Target, b.Target) })
+	return out
 }
 
 // Digest returns the catalog closure digest: the identity of the selected bundles
@@ -100,7 +141,7 @@ func (c *Catalog) Explain(ref Ref) string {
 	fmt.Fprintf(&b, "%s\n", ref)
 	fmt.Fprintf(&b, "  kind:    %s\n", def.kind)
 	if replacement, ok := c.overrides[ref]; ok {
-		fmt.Fprintf(&b, "  override: replaced by %s, so the rest describes that definition\n", replacement)
+		fmt.Fprintf(&b, "  override: replaced by %s%s, so the rest describes that definition\n", replacement, c.via(ref))
 	}
 	var replaces []string
 	for target, replacement := range c.overrides {
@@ -110,7 +151,8 @@ func (c *Catalog) Explain(ref Ref) string {
 	}
 	slices.Sort(replaces)
 	for _, target := range replaces {
-		fmt.Fprintf(&b, "  override: replaces %s\n", target)
+		t, _ := ParseRef(target)
+		fmt.Fprintf(&b, "  override: replaces %s%s\n", target, c.via(t))
 	}
 	fmt.Fprintf(&b, "  owner:   %s %s\n", def.owner.ID, def.owner.Version)
 	fmt.Fprintf(&b, "  origin:  %s\n", def.owner.Origin)
@@ -123,4 +165,15 @@ func (c *Catalog) Explain(ref Ref) string {
 		fmt.Fprintf(&b, "  asset:   %s (%d bytes, %s)\n", a.path, a.size, a.digest)
 	}
 	return b.String()
+}
+
+// via says where the override of target came from, for Explain.
+func (c *Catalog) via(target Ref) string {
+	if c.explicit[target] {
+		return ""
+	}
+	if replacement, ok := c.layers[target.Owner]; ok {
+		return fmt.Sprintf(" (bundle override of %s by %s)", target.Owner, replacement)
+	}
+	return ""
 }
