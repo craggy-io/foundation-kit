@@ -59,16 +59,16 @@ def width(title, line):
 tiers = [
     ('CONSUMERS', [('Your code', 'applications and libraries')]),
     ('EXTENSIONS', [('bundle/compile', 'text, JSON, YAML'), ('kind/jsonschema', 'JSON Schema for kinds')]),
-    ('ENGINES', [('bundle', 'catalogs, overrides, Live'), ('settings', 'live, editable values')]),
+    ('ENGINES', [('bundle', 'catalogs, overrides, Live'), ('settings', 'live, editable values'), ('small engines', 'fsx, canonjson, retryafter')]),
     ('CONTRACTS', [('kind', 'versioned kinds, built-ins')]),
     ('STDLIB', [('Go standard library', 'no other dependencies')]),
 ]
-W, BOX_H, TIER_GAP, LEFT = 1200, 92, 44, 220
+W, BOX_H, TIER_GAP, LEFT = 1280, 92, 44, 220
 right_edge = W - 40
 boxw = max(width(t, l) for _, row in tiers for t, l in row)
 H = 140 + len(tiers) * BOX_H + (len(tiers) - 1) * TIER_GAP + 100
 a = SVG(W, H, 'Foundation Kit layers',
-        'Five tiers, top to bottom: your applications and libraries; extensions (bundle/compile, kind/jsonschema); engines (bundle, settings); contracts (kind); the Go standard library. Imports only point down, and a layer may import any layer below it. Test support (bundletest, archtest) sits alongside the layers and is imported only by tests.')
+        'Five tiers, top to bottom: your applications and libraries; extensions (bundle/compile, kind/jsonschema); engines (bundle, settings, and the small engines fsx, canonjson and retryafter); contracts (kind); the Go standard library. Imports only point down, and a layer may import any layer below it. Test support (bundletest, archtest) sits alongside the layers and is imported only by tests.')
 a.header('FOUNDATION KIT', 'Shared foundations for Craggy applications and libraries', 'PACKAGE LAYERS')
 span = right_edge - LEFT
 y = 140

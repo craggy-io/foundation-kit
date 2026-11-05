@@ -23,6 +23,10 @@ This kit is early, so check before relying on anything:
 | Test a kind, compiler or bundle | `bundle/bundletest` |
 | Declare a live, user-editable value | [`settings`](settings/README.md) |
 | Enforce import rules in a test | [`archtest`](archtest/README.md) |
+| Replace or create a file atomically, or lock one | [`fsx`](fsx/README.md) |
+| Hash JSON so equal values match | [`canonjson`](canonjson/README.md) |
+| Honour a server's `Retry-After` | [`retryafter`](retryafter/README.md) |
+| Open and migrate a SQLite database | [`adapters/sqlite`](adapters/sqlite/README.md) |
 
 ## Layers
 
@@ -30,8 +34,8 @@ Imports point down only. A package's directory doesn't decide its layer, so `bun
 
 | Layer | Packages | May import | Must not |
 | --- | --- | --- | --- |
-| Extensions | `bundle/compile`, `kind/jsonschema` | Engines, contracts, own dependencies | Import another extension, or be imported by an engine |
-| Engines | `bundle`, `settings` | Contracts, small dependencies hidden in `internal/` | Import another engine without an ADR, or expose a third-party type in its API |
+| Extensions | `bundle/compile`, `kind/jsonschema`, `adapters/sqlite` (own module) | Engines, contracts, own dependencies | Import another extension, or be imported by an engine |
+| Engines | `bundle`, `settings`, `fsx`, `canonjson`, `retryafter` | Contracts, small dependencies hidden in `internal/` | Import another engine without an ADR, or expose a third-party type in its API |
 | Contracts | `kind` | Standard library only | Do I/O, or import any other kit package |
 | Test support | `bundle/bundletest`, `archtest` | Any layer, plus `testing` | Be imported by non-test code |
 
@@ -93,5 +97,6 @@ If not, put it in the consumer. Kinds and compilers for a concept live with the 
 
 ```sh
 go build ./... && go vet ./... && go test ./...
+(cd adapters/sqlite && go vet ./... && go test ./...)
 gofmt -l .    # must print nothing
 ```

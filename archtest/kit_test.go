@@ -7,9 +7,11 @@ import (
 )
 
 // The layers of this kit, as described in AGENTS.md. Add every new package here.
+// adapters/sqlite is a nested Go module with its own archtest.Check in its arch_test.go.
 var (
 	contracts   = []string{"./kind"}
-	engines     = []string{"./bundle", "./bundle/internal/...", "./settings"}
+	engines     = []string{"./bundle", "./bundle/internal/...", "./settings", "./canonjson", "./fsx", "./retryafter"}
+	stdOnly     = []string{"./canonjson", "./fsx", "./retryafter"}
 	extensions  = []string{"./bundle/compile", "./kind/jsonschema"}
 	testSupport = []string{"./archtest", "./bundle/bundletest"}
 )
@@ -35,6 +37,12 @@ func TestKitLayers(t *testing.T) {
 				Why:    "an engine's public package must not expose a third-party type, so put the dependency in internal/",
 				From:   []string{"./bundle", "./settings"},
 				Forbid: []string{archtest.External},
+			},
+			{
+				Name:   "small engines use only the standard library",
+				Why:    "canonjson, fsx and retryafter use nothing else, so any module can take them without pulling in anything else",
+				From:   stdOnly,
+				Forbid: []string{"./...", archtest.External},
 			},
 			{
 				Name:   "bundle doesn't use settings",
