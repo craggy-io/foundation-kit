@@ -10,9 +10,11 @@ import (
 	"slices"
 	"sync"
 	"sync/atomic"
+	"testing/fstest"
 	"time"
 
 	"github.com/craggy-io/foundation-kit/bundle/internal/manifest"
+	"github.com/craggy-io/foundation-kit/kind"
 )
 
 // Live holds a host's current Catalog and replaces it, whole, when content changes.
@@ -32,7 +34,7 @@ type Live struct {
 	options func(context.Context) (Options, error)
 	current atomic.Pointer[Catalog]
 
-	// mu serializes Reload, Install and Uninstall, including their calls to the
+	// mu serializes Reload, Install, Uninstall and Edit, including their calls to the
 	// options function and to subscribers.
 	mu sync.Mutex
 
@@ -46,7 +48,7 @@ type Live struct {
 //
 // options is called on every load, so it can list install folders again with
 // Children, and pick up bundles added or removed since the last load. It must not
-// call Reload, Install or Uninstall.
+// call Reload, Install, Uninstall or Edit.
 func NewLive(ctx context.Context, options func(context.Context) (Options, error)) (*Live, error) {
 	if options == nil {
 		return nil, errors.New("bundle: NewLive needs an options function")
@@ -169,7 +171,11 @@ func (l *Live) Install(ctx context.Context, dir string, files fs.FS) (Identity, 
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	return l.install(ctx, dir, files)
+}
 
+// install is Install with l.mu held.
+func (l *Live) install(ctx context.Context, dir string, files fs.FS) (Identity, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return Identity{}, fmt.Errorf("bundle: install: %w", err)
 	}
@@ -223,7 +229,11 @@ func (l *Live) Uninstall(ctx context.Context, dir, id string) error {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	return l.uninstall(ctx, dir, id)
+}
 
+// uninstall is Uninstall with l.mu held.
+func (l *Live) uninstall(ctx context.Context, dir, id string) error {
 	final := filepath.Join(dir, id)
 	if _, ok := ownerAt(l.current.Load(), id, final); !ok {
 		return fmt.Errorf("bundle: uninstall: %s is not installed at %s: %w", id, final, fs.ErrNotExist)
@@ -250,6 +260,124 @@ func (l *Live) Uninstall(ctx context.Context, dir, id string) error {
 	}
 	l.swap(next)
 	return nil
+}
+
+// Put is one contribution for Live.Edit to add or replace: ID, Kind and Path go in
+// bundle.yaml, and Data is written to Path.
+type Put struct {
+	ID   string
+	Kind kind.ID
+	Path string
+	Data []byte
+}
+
+// Edit adds, replaces and removes contributions of the bundle installed as dir/<id>,
+// each named by the caller, and installs the result. It is explicit editing, for a
+// host that installs what a user asked for: it never derives a manifest from files.
+//
+// Edit reads the bundle from dir/<id>, or starts one whose metadata.id is id and
+// metadata.version is 1.0.0. Each Put sets that contribution's kind and path and
+// writes Data there; its path must not be another contribution's. Each ID in remove
+// must be declared, and is dropped. A file no contribution declares any more is
+// deleted. Metadata, dependencies, assets and other files are kept, but comments
+// in bundle.yaml are not.
+//
+// The result goes through Install, or Uninstall if no contribution is left, in the
+// same turn, so it is validated and rolled back the same way. Edit returns the
+// installed bundle's Identity, or none after Uninstall.
+func (l *Live) Edit(ctx context.Context, dir, id string, put []Put, remove []string) (Identity, error) {
+	if !manifest.ValidID(id) {
+		return Identity{}, fmt.Errorf("bundle: edit: %q is not a valid bundle ID", id)
+	}
+	for _, p := range put {
+		if !manifest.ValidID(p.ID) || !fs.ValidPath(p.Path) || p.Path == "." {
+			return Identity{}, fmt.Errorf("bundle: edit: contribution %q at %q: the ID or path is not valid", p.ID, p.Path)
+		}
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	path := filepath.Join(dir, id)
+	files, m, err := readInstalled(ctx, path, id)
+	if err != nil {
+		return Identity{}, err
+	}
+	var dropped []string
+	for _, r := range remove {
+		i := slices.IndexFunc(m.Contributions, func(c manifest.Contribution) bool { return c.ID == r })
+		if i < 0 {
+			return Identity{}, fmt.Errorf("bundle: edit: %s declares no contribution %q: %w", id, r, fs.ErrNotExist)
+		}
+		dropped = append(dropped, m.Contributions[i].Path)
+		m.Contributions = slices.Delete(m.Contributions, i, i+1)
+	}
+	for _, p := range put {
+		i := slices.IndexFunc(m.Contributions, func(c manifest.Contribution) bool { return c.ID == p.ID })
+		if j := slices.IndexFunc(m.Contributions, func(c manifest.Contribution) bool { return c.Path == p.Path }); j >= 0 && j != i {
+			return Identity{}, fmt.Errorf("bundle: edit: %s is contribution %q's path, not %q's", p.Path, m.Contributions[j].ID, p.ID)
+		}
+		if i < 0 {
+			m.Contributions = append(m.Contributions, manifest.Contribution{ID: p.ID})
+			i = len(m.Contributions) - 1
+		}
+		dropped = append(dropped, m.Contributions[i].Path)
+		m.Contributions[i].Kind, m.Contributions[i].Path = p.Kind.String(), p.Path
+		files[p.Path] = &fstest.MapFile{Data: p.Data, Mode: 0o644}
+	}
+	for _, p := range dropped {
+		if !slices.ContainsFunc(m.Contributions, func(c manifest.Contribution) bool { return c.Path == p }) {
+			delete(files, p)
+		}
+	}
+	if len(m.Contributions) == 0 {
+		return Identity{}, l.uninstall(ctx, dir, id)
+	}
+	data, err := manifest.Encode(m)
+	if err != nil {
+		return Identity{}, fmt.Errorf("bundle: edit: %w", err)
+	}
+	files[manifest.FileName] = &fstest.MapFile{Data: data, Mode: 0o644}
+	return l.install(ctx, dir, files)
+}
+
+// readInstalled returns the files and parsed manifest of the bundle at path, or a
+// new manifest for id if there is no folder there.
+func readInstalled(ctx context.Context, path, id string) (fstest.MapFS, *manifest.Manifest, error) {
+	files := fstest.MapFS{}
+	root, err := os.OpenRoot(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return files, &manifest.Manifest{APIVersion: manifest.APIVersion, Metadata: manifest.Metadata{ID: id, Version: "1.0.0"}}, nil
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("bundle: edit: %w", err)
+	}
+	defer root.Close()
+	err = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		switch {
+		case err != nil || d.IsDir():
+			return err
+		case !d.Type().IsRegular():
+			return fmt.Errorf("%s is not a regular file", p)
+		}
+		data, err := fs.ReadFile(root.FS(), p)
+		files[p] = &fstest.MapFile{Data: data, Mode: 0o644}
+		return err
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("bundle: edit: reading %s: %w", path, err)
+	}
+	var data []byte
+	if f, ok := files[manifest.FileName]; ok {
+		data = f.Data
+	}
+	m, diags := manifest.Parse(data)
+	if len(diags) > 0 || m.Metadata.ID != id {
+		if _, err := Load(ctx, Options{Sources: []Source{Dir(path)}}); err != nil {
+			return nil, nil, err
+		}
+		return nil, nil, fmt.Errorf("bundle: edit: %s/%s doesn't declare metadata.id %s", path, manifest.FileName, id)
+	}
+	return files, m, nil
 }
 
 // move replaces the folder at final, keeping the previous one in stage so that it
