@@ -65,6 +65,6 @@ Already working and tested:
 - `New`, `WithSchema` and `Kind.Validate`
 - `Provider` and `Builtin`
 
-Still to build:
+- `jsonschema.New`, backed by `github.com/santhosh-tekuri/jsonschema/v6`. It does no I/O, so a `$ref` outside the document is an error.
 
-1. [ ] `jsonschema.New`, which currently returns `ErrNotImplemented`.
+Nothing is waiting to be built.

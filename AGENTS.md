@@ -8,7 +8,7 @@ Use the terms in [ADR-0001](docs/decisions/ADR-0001-standard-vocabulary.md), and
 
 This kit is early, so check before relying on anything:
 
-- `bundle.Load`, `bundle.Dir`, `Catalog.Explain`, `compile.YAML`, `jsonschema.New` and everything in `bundle/internal/` except `digest.New` and `digest.Sum` are stubs. Until they exist, a consumer can't load a bundle.
+- The `bundle` pipeline works end to end, but no consumer uses it yet, so expect its API to change when the first real kinds are ported.
 - Each package's README has an implementation status list. Update it in the same change as the code.
 
 ## Choose the owning package
