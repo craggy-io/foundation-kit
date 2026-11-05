@@ -36,8 +36,9 @@
 // # Concurrency
 //
 // A Catalog is safe for concurrent reads, and so is an Asset, because each read opens
-// its Source separately. Load may run compilers concurrently, so a Compiler must not
-// share mutable state without its own synchronization.
+// its Source separately. Load runs compilers concurrently, so a Compiler must not
+// share mutable state without its own synchronization. A Compiler that panics is
+// reported as a compile failure rather than crashing the host.
 //
 // # Exported names
 //
