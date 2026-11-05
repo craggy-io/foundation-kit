@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="360" viewBox="0 0 1440 360" role="img" aria-labelledby="title desc">
+<title id="title">How bundle.Load builds a catalog</title>
+<desc id="desc">Seven stages from left to right: locate each source, read a snapshot and parse bundle.yaml, validate manifests, paths, IDs, kinds and assets, compile contributions concurrently, check compiled values and built-ins against kind schemas, link definitions, overrides and references, then accept: compute digests and publish the immutable catalog. Each stage collects every problem, and only runs on input that passed the stage before it.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#FFB547" stroke-width="1.5"/></marker></defs>
+<rect width="1440" height="360" rx="20" fill="#111A20"/>
+<g font-family="'JetBrains Mono', Consolas, 'Liberation Mono', monospace">
+<text x="40" y="53" font-size="28" fill="#FFB547" font-weight="700" text-anchor="start">&gt; BUNDLE.LOAD</text>
+<text x="40" y="87" font-size="20" fill="#93A39A" font-weight="400" text-anchor="start">Sources and built-ins in, one immutable catalog out</text>
+<text x="1400" y="53" font-size="18" fill="#E4ECE7" font-weight="400" text-anchor="end">PIPELINE</text>
+<path d="M40 111 H1400" fill="none" stroke="#2A2F2C" stroke-width="2"/>
+<text x="40" y="158" font-size="16" fill="#FFB547" font-weight="700" text-anchor="start">01</text>
+<rect x="40" y="170" width="167" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="123" y="208" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">Locate</text>
+<text x="123" y="238" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">open sources</text>
+<path d="M211 216 H234" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="238" y="158" font-size="16" fill="#FFB547" font-weight="700" text-anchor="start">02</text>
+<rect x="238" y="170" width="167" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="321" y="208" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">Read</text>
+<text x="321" y="238" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">snapshot</text>
+<path d="M409 216 H432" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="436" y="158" font-size="16" fill="#FFB547" font-weight="700" text-anchor="start">03</text>
+<rect x="436" y="170" width="167" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="519" y="208" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">Validate</text>
+<text x="519" y="238" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">paths, IDs</text>
+<path d="M607 216 H630" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="634" y="158" font-size="16" fill="#FFB547" font-weight="700" text-anchor="start">04</text>
+<rect x="634" y="170" width="167" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="717" y="208" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">Compile</text>
+<text x="717" y="238" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">concurrently</text>
+<path d="M805 216 H828" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="832" y="158" font-size="16" fill="#FFB547" font-weight="700" text-anchor="start">05</text>
+<rect x="832" y="170" width="167" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="915" y="208" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">Check</text>
+<text x="915" y="238" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">kind schemas</text>
+<path d="M1003 216 H1026" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="1030" y="158" font-size="16" fill="#FFB547" font-weight="700" text-anchor="start">06</text>
+<rect x="1030" y="170" width="167" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="1113" y="208" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">Link</text>
+<text x="1113" y="238" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">resolve refs</text>
+<path d="M1201 216 H1224" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="1228" y="158" font-size="16" fill="#FFB547" font-weight="700" text-anchor="start">07</text>
+<rect x="1228" y="170" width="167" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="1311" y="208" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">Accept</text>
+<text x="1311" y="238" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">digests</text>
+<text x="40" y="314" font-size="16" fill="#93A39A" font-weight="400" text-anchor="start">Each stage reports every problem it finds, and only runs on input that passed the one before.</text>
+<text x="40" y="342" font-size="16" fill="#93A39A" font-weight="400" text-anchor="start">Nothing is started: services read what they need from the catalog.</text>
+</g></svg>

@@ -255,6 +255,12 @@ Most kinds just read one file into a value, so the `compile` package covers them
 
 ## Pipeline
 
+<p align="center">
+  <a href="../docs/assets/bundle-pipeline.svg">
+    <img src="../docs/assets/bundle-pipeline.svg" alt="bundle.Load in seven stages, left to right: Locate, Read, Validate, Compile, Check, Link, Accept. Each stage reports every problem it finds and only runs on input that passed the one before. Nothing is started." width="100%">
+  </a>
+</p>
+
 | Stage | What happens | Code |
 | --- | --- | --- |
 | Locate | Open each selected source | `source.go` |

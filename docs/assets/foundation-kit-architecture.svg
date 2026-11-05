@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="876" viewBox="0 0 1200 876" role="img" aria-labelledby="title desc">
+<title id="title">Foundation Kit layers</title>
+<desc id="desc">Five tiers, top to bottom: your applications and libraries; extensions (bundle/compile, kind/jsonschema); engines (bundle, settings); contracts (kind); the Go standard library. Imports only point down, and a layer may import any layer below it. Test support (bundletest, archtest) sits alongside the layers and is imported only by tests.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#FFB547" stroke-width="1.5"/></marker></defs>
+<rect width="1200" height="876" rx="20" fill="#111A20"/>
+<g font-family="'JetBrains Mono', Consolas, 'Liberation Mono', monospace">
+<text x="40" y="53" font-size="28" fill="#FFB547" font-weight="700" text-anchor="start">&gt; FOUNDATION KIT</text>
+<text x="40" y="87" font-size="20" fill="#93A39A" font-weight="400" text-anchor="start">Shared foundations for Craggy applications and libraries</text>
+<text x="1160" y="53" font-size="18" fill="#E4ECE7" font-weight="400" text-anchor="end">PACKAGE LAYERS</text>
+<path d="M40 111 H1160" fill="none" stroke="#2A2F2C" stroke-width="2"/>
+<text x="40" y="193" font-size="17" fill="#FFB547" font-weight="700" text-anchor="start">CONSUMERS</text>
+<rect x="536" y="140" width="307" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="689" y="178" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">Your code</text>
+<text x="689" y="208" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">applications and libraries</text>
+<path d="M690 236 V272" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="704" y="260" font-size="16" fill="#FFB547" font-weight="400" text-anchor="start">imports</text>
+<text x="40" y="329" font-size="17" fill="#FFB547" font-weight="700" text-anchor="start">EXTENSIONS</text>
+<rect x="363" y="276" width="307" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="516" y="314" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">bundle/compile</text>
+<text x="516" y="344" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">text, JSON, YAML</text>
+<rect x="710" y="276" width="307" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="863" y="314" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">kind/jsonschema</text>
+<text x="863" y="344" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">JSON Schema for kinds</text>
+<path d="M690 372 V408" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="704" y="396" font-size="16" fill="#FFB547" font-weight="400" text-anchor="start">imports</text>
+<text x="40" y="465" font-size="17" fill="#FFB547" font-weight="700" text-anchor="start">ENGINES</text>
+<rect x="363" y="412" width="307" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="516" y="450" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">bundle</text>
+<text x="516" y="480" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">catalogs, overrides, Live</text>
+<rect x="710" y="412" width="307" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="863" y="450" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">settings</text>
+<text x="863" y="480" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">live, editable values</text>
+<path d="M690 508 V544" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="704" y="532" font-size="16" fill="#FFB547" font-weight="400" text-anchor="start">imports</text>
+<text x="40" y="601" font-size="17" fill="#FFB547" font-weight="700" text-anchor="start">CONTRACTS</text>
+<rect x="536" y="548" width="307" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="689" y="586" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">kind</text>
+<text x="689" y="616" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">versioned kinds, built-ins</text>
+<path d="M690 644 V680" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="704" y="668" font-size="16" fill="#FFB547" font-weight="400" text-anchor="start">imports</text>
+<text x="40" y="737" font-size="17" fill="#FFB547" font-weight="700" text-anchor="start">STDLIB</text>
+<rect x="536" y="684" width="307" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="689" y="722" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">Go standard library</text>
+<text x="689" y="752" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">no other dependencies</text>
+<text x="40" y="814" font-size="16" fill="#93A39A" font-weight="400" text-anchor="start">Imports only point down; a layer may import any layer below it.</text>
+<text x="40" y="842" font-size="16" fill="#93A39A" font-weight="400" text-anchor="start">Test support (bundletest, archtest) sits alongside; only tests import it.</text>
+</g></svg>
