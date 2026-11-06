@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -20,10 +21,12 @@ const (
 	moveFileReplaceExisting = 0x1
 	moveFileWriteThrough    = 0x8
 
-	lockExclusive      = 0x2
-	lockFailImmediate  = 0x1
-	errorLockViolation = syscall.Errno(33)
-	errorIOPending     = syscall.Errno(997)
+	lockExclusive         = 0x2
+	lockFailImmediate     = 0x1
+	errorAccessDenied     = syscall.Errno(5)
+	errorSharingViolation = syscall.Errno(32)
+	errorLockViolation    = syscall.Errno(33)
+	errorIOPending        = syscall.Errno(997)
 	// The lock covers one byte far past any content, because Windows locks are
 	// mandatory and would otherwise stop other processes reading the lock file.
 	lockOffsetHigh = 0x7fff0000
@@ -38,8 +41,23 @@ func SyncDir(string) error { return nil }
 // this file's latest metadata change, which includes creating the name.
 func syncLink(path string) error { return syncOpen(path, os.O_RDWR) }
 
+// Scanners and indexers briefly open files that were just written, which makes
+// the replace fail with access denied or a sharing violation; it is retried for
+// up to about two seconds, as cmd/go's robustio does.
 func replace(tmp, path string) error {
-	return moveFile(tmp, path, moveFileReplaceExisting|moveFileWriteThrough)
+	for wait := 10 * time.Millisecond; ; wait *= 2 {
+		err := moveFile(tmp, path, moveFileReplaceExisting|moveFileWriteThrough)
+		if err == nil || !transient(err) || wait > time.Second {
+			return err
+		}
+		time.Sleep(wait)
+	}
+}
+
+// transient reports a Windows error that another process's short-lived open
+// of the file causes.
+func transient(err error) bool {
+	return errors.Is(err, errorAccessDenied) || errors.Is(err, errorSharingViolation)
 }
 
 // Without MOVEFILE_REPLACE_EXISTING the move fails if path exists, with an error
