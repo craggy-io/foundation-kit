@@ -10,8 +10,8 @@ import (
 // adapters/sqlite is a nested Go module with its own archtest.Check in its arch_test.go.
 var (
 	contracts   = []string{"./kind"}
-	engines     = []string{"./bundle", "./bundle/internal/...", "./settings", "./canonjson", "./fsx", "./retryafter"}
-	stdOnly     = []string{"./canonjson", "./fsx", "./retryafter"}
+	engines     = []string{"./bundle", "./bundle/internal/...", "./settings", "./canonjson", "./fsx", "./retryafter", "./feed"}
+	stdOnly     = []string{"./canonjson", "./fsx", "./retryafter", "./feed"}
 	extensions  = []string{"./bundle/compile", "./kind/jsonschema"}
 	testSupport = []string{"./archtest", "./bundle/bundletest"}
 )
@@ -40,7 +40,7 @@ func TestKitLayers(t *testing.T) {
 			},
 			{
 				Name:   "small engines use only the standard library",
-				Why:    "canonjson, fsx and retryafter use nothing else, so any module can take them without pulling in anything else",
+				Why:    "canonjson, fsx, retryafter and feed use nothing else, so any module can take them without pulling in anything else",
 				From:   stdOnly,
 				Forbid: []string{"./...", archtest.External},
 			},
