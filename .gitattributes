@@ -1,0 +1,4 @@
+# Check out text files with LF on every OS, so Go sources pass gofmt and test data
+# hashes and compares the same everywhere. Without this, core.autocrlf on Windows
+# rewrites bundle test data to CRLF and breaks tests.
+* text=auto eol=lf
