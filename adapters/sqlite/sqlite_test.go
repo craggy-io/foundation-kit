@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -35,11 +36,17 @@ func pragma(t *testing.T, db *sql.DB, name string) string {
 }
 
 func TestOpenEscapesAwkwardPaths(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "odd ?#% dir")
+	// Each of these means something in a SQLite URI. Windows forbids "?" in file
+	// names, so use "&", which also separates URI query parameters.
+	q := "?"
+	if runtime.GOOS == "windows" {
+		q = "&"
+	}
+	dir := filepath.Join(t.TempDir(), "odd "+q+"#% dir")
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, "data?.db")
+	path := filepath.Join(dir, "data"+q+".db")
 	db := open(t, path, sqlite.Options{})
 	if _, err := db.ExecContext(ctx, "CREATE TABLE t (x)"); err != nil {
 		t.Fatal(err)
@@ -49,7 +56,7 @@ func TestOpenEscapesAwkwardPaths(t *testing.T) {
 	}
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
-		if !strings.HasPrefix(e.Name(), "data?.db") {
+		if !strings.HasPrefix(e.Name(), "data"+q+".db") {
 			t.Fatalf("stray file %q: path was misparsed", e.Name())
 		}
 	}
