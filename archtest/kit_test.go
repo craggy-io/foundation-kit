@@ -13,18 +13,26 @@ var (
 	engines     = []string{"./bundle", "./bundle/internal/...", "./settings", "./canonjson", "./fsx", "./retryafter", "./feed"}
 	stdOnly     = []string{"./canonjson", "./fsx", "./retryafter", "./feed"}
 	extensions  = []string{"./bundle/compile", "./kind/jsonschema"}
-	testSupport = []string{"./archtest", "./bundle/bundletest"}
+	testSupport = []string{"./archtest", "./archtest/internal/...", "./bundle/bundletest"}
+	shared      = []string{"./internal/..."} // module-root internal/, decided by ADR-0003
 )
 
 func TestKitLayers(t *testing.T) {
 	archtest.Check(t, archtest.Config{
-		Packages: concat(contracts, engines, extensions, testSupport),
+		Packages: concat(contracts, engines, extensions, testSupport, shared),
 		Rules: []archtest.Rule{
 			{
 				Name:   "contracts stay cheap",
 				Why:    "a contract imports only the standard library, so depending on it costs nothing",
 				From:   contracts,
 				Forbid: []string{"./...", archtest.External},
+			},
+			{
+				Name:   "shared internal code is a leaf",
+				Why:    "module-root internal/ is shared by several layers, so it imports no other kit package (ADR-0003)",
+				From:   shared,
+				Forbid: []string{"./..."},
+				Allow:  shared,
 			},
 			{
 				Name:   "engines stay below extensions",
@@ -85,4 +93,9 @@ func concat(groups ...[]string) []string {
 		all = append(all, g...)
 	}
 	return all
+}
+
+// The kit's own repository rules, in the root archtest.yaml.
+func TestKitRepositoryRules(t *testing.T) {
+	archtest.CheckFile(t.Context(), t, "../archtest.yaml")
 }

@@ -31,6 +31,6 @@ Digests made from this form are stored by consumers, so the form never changes. 
 - `ErrInvalid`: a syntax error, trailing content, invalid UTF-8 or a duplicate object member.
 - `ErrLimit`: input or output over `MaxBytes` (8 MiB), nesting deeper than `MaxDepth` (64), or a number whose exact form would be huge, such as `1e999999999`.
 
-## Status
+## Implementation status
 
 - Working: `Normalize`, `Marshal`.

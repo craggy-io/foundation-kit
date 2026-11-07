@@ -4,9 +4,15 @@ package jsonschema
 
 import (
 	"bytes"
+	"cmp"
+	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 
 	"github.com/craggy-io/foundation-kit/kind"
 )
@@ -41,3 +47,49 @@ func New(document []byte) (kind.Schema, error) {
 type schema struct{ s *jsonschema.Schema }
 
 func (s schema) Validate(value any) error { return s.s.Validate(value) }
+
+// Problem is one reason a value failed validation.
+type Problem struct {
+	// Pointer is the JSON Pointer (RFC 6901) of the failing value within the
+	// validated value. It is "" for the value itself.
+	Pointer string
+
+	// Message says what is wrong, in English.
+	Message string
+}
+
+var printer = message.NewPrinter(language.English)
+
+// Problems splits an error returned by the Validate method of a schema from New into
+// its individual problems, sorted by Pointer and then Message. It reports false for
+// any other error, including nil.
+//
+// It exists so that a caller can position each problem in the source text it decoded
+// the value from, without depending on the JSON Schema library's types.
+func Problems(err error) ([]Problem, bool) {
+	var ve *jsonschema.ValidationError
+	if !errors.As(err, &ve) {
+		return nil, false
+	}
+	var out []Problem
+	var walk func(*jsonschema.ValidationError)
+	walk = func(e *jsonschema.ValidationError) {
+		if len(e.Causes) == 0 {
+			var ptr strings.Builder
+			for _, tok := range e.InstanceLocation {
+				ptr.WriteByte('/')
+				ptr.WriteString(strings.NewReplacer("~", "~0", "/", "~1").Replace(tok))
+			}
+			out = append(out, Problem{Pointer: ptr.String(), Message: e.ErrorKind.LocalizedString(printer)})
+			return
+		}
+		for _, c := range e.Causes {
+			walk(c)
+		}
+	}
+	walk(ve)
+	slices.SortFunc(out, func(a, b Problem) int {
+		return cmp.Or(cmp.Compare(a.Pointer, b.Pointer), cmp.Compare(a.Message, b.Message))
+	})
+	return slices.Compact(out), true
+}

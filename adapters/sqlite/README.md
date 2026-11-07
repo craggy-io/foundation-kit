@@ -44,7 +44,7 @@ err := sqlite.Migrate(ctx, db, schema)
 
 `steps[i]` upgrades version `i` to `i+1`, and the version is kept in SQLite's `user_version`. Each step runs in its own transaction with its version change. Several processes can migrate one file at once, and each step still runs exactly once. A database newer than the program fails with `ErrNewerSchema` and isn't touched. Never edit a released step; append a new one.
 
-## Status
+## Implementation status
 
 - Working: `Open`, `DSN`, `Migrate`, `Exec`, `Version`.
 - Windows paths with a drive letter are mapped to `file:/C:/...` but haven't been tested on Windows yet.

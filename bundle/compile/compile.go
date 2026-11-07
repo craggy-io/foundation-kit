@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/craggy-io/foundation-kit/bundle"
-	"github.com/craggy-io/foundation-kit/bundle/internal/strictyaml"
+	"github.com/craggy-io/foundation-kit/internal/strictyaml"
 )
 
 // Text returns a Compiler whose value is the file's contents as a string.

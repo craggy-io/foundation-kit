@@ -1,0 +1,23 @@
+# Repository rules for Foundation Kit, checked by TestKitRepositoryRules in
+# archtest/kit_test.go. Import layers are in that file as Go rules. See
+# archtest/README.md for the format.
+version: 1
+rules:
+  - id: package-readmes
+    why: AGENTS.md requires each package README to keep an implementation status list, updated in the same change as the code.
+    select:
+      kind: file
+      include: ['*/README.md', 'adapters/*/README.md']
+      exclude: ['docs/**']
+    markdown:
+      headings:
+        - {text: Implementation status, level: 2, count: 1, body: nonempty}
+
+  - id: package-names
+    why: Name a package for what it provides, as AGENTS.md says, so unrelated code doesn't collect in a catch-all.
+    select:
+      kind: directory
+      include: ['.', '**']
+      exclude: ['docs/**']
+    tree:
+      forbid: [util, utils, common, helpers, types, manager, core, misc]

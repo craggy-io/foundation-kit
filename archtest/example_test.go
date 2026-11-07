@@ -31,3 +31,12 @@ func ExampleCheck() {
 		},
 	})
 }
+
+// A consumer whose Go module is in src/ puts this test beside src/go.mod, and the
+// rules in archtest.yaml at the repository root. This example only compiles; see
+// TestKitRepositoryRules in kit_test.go for one that runs.
+func ExampleCheckFile() {
+	var t *testing.T // in a real test, the test's own t
+
+	archtest.CheckFile(t.Context(), t, "../archtest.yaml")
+}

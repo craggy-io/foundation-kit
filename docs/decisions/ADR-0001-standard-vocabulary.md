@@ -43,6 +43,8 @@ Adopt the vocabulary below for exported names, package and file names, manifest 
 | **Extension** | A package in the top layer: an optional addition to an engine or contract | A plugin |
 | **Test support** | A package that helps tests and is imported by no other code, named `<name>test` | Test files |
 | **Adapter** | An extension that translates between the kit and one technology or peer library, in its own Go module under `adapters/` | The owner of the behaviour it translates |
+| **Shared internal** | A package under the module-root `internal/`, private to the module and shared by several layers ([ADR-0003](ADR-0003-repository-rules-and-shared-internal.md)) | A package's own `internal/` |
+| **Repository rule** | A reviewed structural requirement on a repository, checked by `archtest` in a test, written in `archtest.yaml` or as an `archtest.Rule` | A runtime check such as `bundle.Load`, or a judgement of what prose means |
 
 ### Kinds and definitions
 

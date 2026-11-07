@@ -20,6 +20,6 @@ Both forms of the header are accepted: a number of seconds, and an HTTP date in 
 
 Non-standard headers such as `X-RateLimit-Reset` differ between services, so they're left to the client that knows them.
 
-## Status
+## Implementation status
 
 - Working: `Parse`, `Delay`.

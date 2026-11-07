@@ -87,13 +87,16 @@ func Check(t testing.TB, c Config) {
 		return
 	}
 	if len(problems) > 0 {
-		t.Errorf("archtest: %d problem(s):\n  %s", len(problems), strings.Join(problems, "\n  "))
+		t.Errorf("%s", report("archtest", problems, ""))
 	}
 }
 
-// run returns every problem in a deterministic order. Its error means the Go module
-// couldn't be examined.
-func run(c Config) ([]string, error) {
+// run returns every problem, sorted, with paths relative to the Go module's
+// directory. Its error means the Go module couldn't be examined.
+//
+// CheckFile uses this same function for imports rules, so a Rule behaves identically
+// whether it is written in Go or in archtest.yaml.
+func run(c Config) ([]diagnostic, error) {
 	dir, err := moduleDir(c.Dir)
 	if err != nil {
 		return nil, err
@@ -112,7 +115,8 @@ func run(c Config) ([]string, error) {
 
 	if !c.AllowReplace {
 		for _, r := range replaces {
-			problems = append(problems, "go.mod: "+r+": remove this replace directive and use an uncommitted go.work instead")
+			problems = append(problems, diagnostic{Code: codeReplace, Path: "go.mod", Line: r.line,
+				Message: r.text + ": remove this replace directive and use an uncommitted go.work instead"})
 		}
 	}
 
@@ -132,13 +136,20 @@ func run(c Config) ([]string, error) {
 		problems = append(problems, m.violations(r, pkgs)...)
 	}
 	problems = append(problems, m.uncovered(c.Packages, pkgs)...)
-	return problems, nil
+	return sortDiagnostics(problems), nil
 }
 
 // pkg is what scan learned about one package.
 type pkg struct {
-	imports map[string]string // import path -> first non-test file that imports it
-	hasCode bool              // whether it has any non-test file
+	dir     string                // directory relative to the Go module, using "/"
+	imports map[string]importSite // import path -> where a non-test file first imports it
+	hasCode bool                  // whether it has any non-test file
+}
+
+// importSite is the position of an import spec, with a path relative to the Go module.
+type importSite struct {
+	file         string
+	line, column int
 }
 
 // matcher resolves patterns against one Go module.
@@ -184,58 +195,59 @@ func (m matcher) matchesAny(patterns []string, path string) bool {
 }
 
 // validate reports why a rule can't do its job.
-func (m matcher) validate(index int, r Rule) []string {
+func (m matcher) validate(index int, r Rule) []diagnostic {
 	label := r.Name
 	if label == "" {
 		label = "#" + strconv.Itoa(index)
 	}
-	var problems []string
-	add := func(format string, args ...any) {
-		problems = append(problems, fmt.Sprintf("rule %s: ", label)+fmt.Sprintf(format, args...))
+	var problems []diagnostic
+	add := func(code, format string, args ...any) {
+		problems = append(problems, diagnostic{Code: code, Rule: label, Message: fmt.Sprintf(format, args...)})
 	}
 	if r.Name == "" {
-		add("has no Name")
+		add(codeConfigInvalid, "has no Name")
 	}
 	if r.Why == "" {
-		add("has no Why")
+		add(codeConfigInvalid, "has no Why")
 	}
 	if len(r.From) == 0 {
-		add("has no From, so it checks nothing")
+		add(codeConfigInvalid, "has no From, so it checks nothing")
 	}
 	if len(r.Forbid) == 0 {
-		add("has no Forbid, so it checks nothing")
+		add(codeConfigInvalid, "has no Forbid, so it checks nothing")
 	}
 	for _, p := range append(slices.Clone(r.From), r.Except...) {
 		if !m.local(p) {
-			add("%q in From or Except isn't a package in %s", p, m.module)
+			add(codeConfigInvalid, "%q in From or Except isn't a package in %s", p, m.module)
 		}
 	}
 	for _, group := range [][]string{r.From, r.Except, r.Forbid, r.Allow} {
 		for _, p := range group {
-			if m.local(p) && !slices.ContainsFunc(m.packages, func(name string) bool { return m.matches(p, name) }) {
-				add("pattern %q matches no package", p)
+			if m.local(p) && !m.matchesSome(p) {
+				add(codePatternUnmatched, "pattern %q matches no package", p)
 			}
 		}
 	}
 	return problems
 }
 
+// matchesSome reports whether pattern matches at least one package in the Go module.
+func (m matcher) matchesSome(pattern string) bool {
+	return slices.ContainsFunc(m.packages, func(name string) bool { return m.matches(pattern, name) })
+}
+
 // violations lists the imports that break a valid rule.
-func (m matcher) violations(r Rule, pkgs map[string]*pkg) []string {
-	var problems []string
+func (m matcher) violations(r Rule, pkgs map[string]*pkg) []diagnostic {
+	var problems []diagnostic
 	for _, name := range m.packages {
 		if !m.matchesAny(r.From, name) || m.matchesAny(r.Except, name) {
 			continue
 		}
-		imports := make([]string, 0, len(pkgs[name].imports))
-		for imp := range pkgs[name].imports {
-			imports = append(imports, imp)
-		}
-		slices.Sort(imports)
-		for _, imp := range imports {
+		for imp, site := range pkgs[name].imports {
 			if m.matchesAny(r.Forbid, imp) && !m.matchesAny(r.Allow, imp) {
-				problems = append(problems, fmt.Sprintf("%s imports %s (%s)\n    rule %q: %s",
-					name, imp, pkgs[name].imports[imp], r.Name, r.Why))
+				problems = append(problems, diagnostic{Code: codeImportForbidden, Rule: r.Name, Why: r.Why,
+					Path: site.file, Line: site.line, Column: site.column,
+					Message: fmt.Sprintf("%s imports %s", name, imp)})
 			}
 		}
 	}
@@ -244,22 +256,25 @@ func (m matcher) violations(r Rule, pkgs map[string]*pkg) []string {
 
 // uncovered reports packages that Config.Packages doesn't list, and patterns in it
 // that are wrong or match nothing.
-func (m matcher) uncovered(patterns []string, pkgs map[string]*pkg) []string {
+func (m matcher) uncovered(patterns []string, pkgs map[string]*pkg) []diagnostic {
 	if len(patterns) == 0 {
 		return nil
 	}
-	var problems []string
+	var problems []diagnostic
 	for _, p := range patterns {
 		switch {
 		case !m.local(p):
-			problems = append(problems, fmt.Sprintf("Packages: %q isn't a package in %s", p, m.module))
-		case !slices.ContainsFunc(m.packages, func(name string) bool { return m.matches(p, name) }):
-			problems = append(problems, fmt.Sprintf("Packages: pattern %q matches no package", p))
+			problems = append(problems, diagnostic{Code: codeConfigInvalid,
+				Message: fmt.Sprintf("Packages: %q isn't a package in %s", p, m.module)})
+		case !m.matchesSome(p):
+			problems = append(problems, diagnostic{Code: codePatternUnmatched,
+				Message: fmt.Sprintf("Packages: pattern %q matches no package", p)})
 		}
 	}
 	for _, name := range m.packages {
 		if pkgs[name].hasCode && !m.matchesAny(patterns, name) {
-			problems = append(problems, fmt.Sprintf("%s isn't in Packages: decide which rules apply to it and add it", name))
+			problems = append(problems, diagnostic{Code: codePackageUncovered, Path: pkgs[name].dir,
+				Message: fmt.Sprintf("%s isn't in Packages: decide which rules apply to it and add it", name)})
 		}
 	}
 	return problems
@@ -287,9 +302,14 @@ func moduleDir(dir string) (string, error) {
 	}
 }
 
-// readGoMod returns the Go module's path and its replace directives, each described
-// by its line number and text.
-func readGoMod(path string) (module string, replaces []string, err error) {
+// replaceDirective is a replace line in go.mod.
+type replaceDirective struct {
+	line int
+	text string
+}
+
+// readGoMod returns the Go module's path and its replace directives.
+func readGoMod(path string) (module string, replaces []replaceDirective, err error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", nil, err
@@ -307,7 +327,7 @@ func readGoMod(path string) (module string, replaces []string, err error) {
 		case fields[0] == "module" && len(fields) == 2:
 			module = strings.Trim(fields[1], "\"`")
 		case fields[0] == "replace" || strings.HasPrefix(fields[0], "replace("):
-			replaces = append(replaces, fmt.Sprintf("line %d: %s", n, strings.TrimSpace(line)))
+			replaces = append(replaces, replaceDirective{line: n, text: strings.TrimSpace(line)})
 		}
 	}
 	if err := sc.Err(); err != nil {
@@ -321,9 +341,9 @@ func readGoMod(path string) (module string, replaces []string, err error) {
 
 // scan parses the imports of every Go file in the Go module. A file that doesn't parse
 // is reported as a problem rather than stopping the scan.
-func scan(dir, module string) (map[string]*pkg, []string, error) {
+func scan(dir, module string) (map[string]*pkg, []diagnostic, error) {
 	pkgs := map[string]*pkg{}
-	var problems []string
+	var problems []diagnostic
 	fset := token.NewFileSet()
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -349,21 +369,29 @@ func scan(dir, module string) (map[string]*pkg, []string, error) {
 		if err != nil {
 			return err
 		}
-		path := module
+		rel = filepath.ToSlash(rel)
+		path, file := module, name
 		if rel != "." {
-			path = module + "/" + filepath.ToSlash(rel)
+			path, file = module+"/"+rel, rel+"/"+name
 		}
 		if pkgs[path] == nil {
-			pkgs[path] = &pkg{imports: map[string]string{}}
+			pkgs[path] = &pkg{dir: rel, imports: map[string]importSite{}}
 		}
 		if strings.HasSuffix(name, "_test.go") {
 			return nil
 		}
 		pkgs[path].hasCode = true
 
-		f, err := parser.ParseFile(fset, p, nil, parser.ImportsOnly)
+		src, err := os.ReadFile(p)
 		if err != nil {
-			problems = append(problems, fmt.Sprintf("%s: can't read imports: %v", p, err))
+			return err
+		}
+		// Parse under the relative name, so messages don't depend on where the
+		// repository is checked out.
+		f, err := parser.ParseFile(fset, file, src, parser.ImportsOnly)
+		if err != nil {
+			problems = append(problems, diagnostic{Code: codeParseFailed, Path: file,
+				Message: fmt.Sprintf("can't read imports: %v", err)})
 			return nil
 		}
 		for _, spec := range f.Imports {
@@ -372,7 +400,8 @@ func scan(dir, module string) (map[string]*pkg, []string, error) {
 				return fmt.Errorf("%s: %w", p, err)
 			}
 			if _, seen := pkgs[path].imports[imp]; !seen {
-				pkgs[path].imports[imp] = name
+				pos := fset.Position(spec.Pos())
+				pkgs[path].imports[imp] = importSite{file: file, line: pos.Line, column: pos.Column}
 			}
 		}
 		return nil

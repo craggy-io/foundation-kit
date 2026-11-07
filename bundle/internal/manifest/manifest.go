@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/craggy-io/foundation-kit/bundle/internal/strictyaml"
+	"github.com/craggy-io/foundation-kit/internal/strictyaml"
 )
 
 const (

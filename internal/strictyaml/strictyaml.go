@@ -1,7 +1,11 @@
 // Package strictyaml parses and writes the restricted, JSON-compatible subset of
-// YAML that bundle.yaml and compile.YAML accept. It is the only place the YAML
-// library is imported, so the library can be swapped without changing any other
-// package.
+// YAML that bundle.yaml, compile.YAML and archtest.yaml accept. It is the only place
+// the YAML library is imported, so the library can be swapped without changing any
+// other package.
+//
+// It lives in the module-root internal/ so that packages in different layers share
+// one decoder. ADR-0003 says who may import it: it imports no kit package, and no
+// importer exposes its types.
 //
 // The subset rejects duplicate keys, anchors, aliases, merge keys, explicit tags,
 // non-string mapping keys and more than one document. Every problem in a document is

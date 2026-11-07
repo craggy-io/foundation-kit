@@ -76,6 +76,7 @@ The kit is organised in layers, and imports only ever point down. This is what l
 | **Engines** | Generic mechanisms that do the real work, such as the bundle pipeline. | Contracts, plus small dependencies hidden in `internal/` |
 | **Extensions** | Optional additions to an engine or contract, such as ready-made compilers. | Contracts and engines. May add their own dependencies. |
 | **Test support** | Helpers for testing against the kit, such as `bundletest`. Sits alongside the layers. | Anything, but only tests may import it |
+| **Shared internal** | Private code that several layers need, such as the strict YAML decoder in `internal/strictyaml`. Not importable from outside the module. | Standard library and small dependencies, but no other kit package |
 
 Nothing in the kit knows about any product. If a package needs a word like "lab" or "APK", it belongs in the library or application that owns that concept.
 
@@ -94,7 +95,7 @@ Nothing in the kit knows about any product. If a package needs a word like "lab"
 | [`feed`](feed/README.md) | Engines | Ordered change feed with per-reader cursors and backlog replay | Working; first consumer craggy-labs |
 | [`adapters/sqlite`](adapters/sqlite/README.md) | Extensions, own Go module | Opens SQLite with safe settings, and migrates schemas by version | Working, consumers not migrated yet |
 | `bundle/bundletest` | Test support | Helpers for testing kinds, compilers and bundles | Working |
-| [`archtest`](archtest/README.md) | Test support | Turns architecture rules into test failures | Working |
+| [`archtest`](archtest/README.md) | Test support | Turns repository rules into test failures: import boundaries, directory layout, README structure and JSON or YAML shapes, from Go or an `archtest.yaml` | Working |
 
 We also expect to add packages for lifecycle management, logging and an HTTP server. None of them exist yet, and each will be added once real applications need it.
 

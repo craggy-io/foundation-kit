@@ -295,8 +295,7 @@ Nothing is started by `Load`. Services read what they need from the catalog and 
 | `diagnostic.go` | `Diagnostic`, `LoadError`, severities and codes |
 | `compile/` | Ready-made compilers |
 | `bundletest/` | Helpers for testing kinds, compilers and shipped bundles |
-| `internal/manifest/` | `bundle.yaml` decoding and validation |
-| `internal/strictyaml/` | The strict YAML subset, and the only import of the YAML library (`go.yaml.in/yaml/v3`) |
+| `internal/manifest/` | `bundle.yaml` decoding and validation, using the strict YAML subset in the module-root [`internal/strictyaml`](../internal/strictyaml), which is the only import of the YAML library (`go.yaml.in/yaml/v3`) |
 | `internal/snapshot/` | Path policy, immutable file copies and asset hashing |
 | `internal/digest/` | Canonical file, bundle and catalog hashing |
 | `internal/link/` | Reference, dependency, override and bundle override resolution, and global ID checks |
@@ -343,7 +342,7 @@ Working and tested:
 - `Compile`, `Ref`, `ParseRef`, `Identity`, `LoadError` and every diagnostic code
 - `compile.Text`, `compile.JSON` and `compile.YAML`
 - `bundletest.Load`, `bundletest.CheckSample` and `bundletest.RequireCode`
-- `internal/strictyaml`, `internal/manifest`, `internal/snapshot`, `internal/link`, and `internal/digest`, whose bundle and catalog encodings have golden tests
+- `internal/manifest`, `internal/snapshot`, `internal/link`, and `internal/digest`, whose bundle and catalog encodings have golden tests
 - Tests that load every `testdata` bundle, and examples of `Load`, `Dir` and `Live` with expected output
 
 Still to build:

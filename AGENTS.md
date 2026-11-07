@@ -22,7 +22,7 @@ This kit is early, so check before relying on anything:
 | Validate a kind against JSON Schema | `kind/jsonschema` |
 | Test a kind, compiler or bundle | `bundle/bundletest` |
 | Declare a live, user-editable value | [`settings`](settings/README.md) |
-| Enforce import rules in a test | [`archtest`](archtest/README.md) |
+| Enforce import, layout, README or data-shape rules in a test | [`archtest`](archtest/README.md) |
 | Replace or create a file atomically, or lock one | [`fsx`](fsx/README.md) |
 | Hash JSON so equal values match | [`canonjson`](canonjson/README.md) |
 | Honour a server's `Retry-After` | [`retryafter`](retryafter/README.md) |
@@ -39,8 +39,9 @@ Imports point down only. A package's directory doesn't decide its layer, so `bun
 | Engines | `bundle`, `settings`, `fsx`, `canonjson`, `retryafter`, `feed` | Contracts, small dependencies hidden in `internal/` | Import another engine without an ADR, or expose a third-party type in its API |
 | Contracts | `kind` | Standard library only | Do I/O, or import any other kit package |
 | Test support | `bundle/bundletest`, `archtest` | Any layer, plus `testing` | Be imported by non-test code |
+| Shared internal | `internal/...` at the module root | Standard library, small dependencies, other `internal/` packages | Import any other kit package, be imported by a contract, or have its types exposed by an importer ([ADR-0003](docs/decisions/ADR-0003-repository-rules-and-shared-internal.md)) |
 
-- **`internal/`:** belongs to its parent package, and has the same layer and limits.
+- **`internal/`:** belongs to its parent package, and has the same layer and limits. The exception is the module-root `internal/`, which several layers share under the row above.
 - **External tests:** `package x_test` files may import higher layers, as `bundle/example_test.go` does with `compile`. Normal test files can't, because that creates an import cycle.
 - **Heavy dependencies:** put an extension with a heavy or optional dependency in its own Go module under `adapters/<technology>/`, with its own `go.mod`. Root `go test ./...` doesn't reach nested modules, so add each one to the checks below.
 
@@ -93,7 +94,7 @@ If not, put it in the consumer. Kinds and compilers for a concept live with the 
 - Reread files before editing, and preserve concurrent changes.
 - Commit no `replace` directives. Use an uncommitted `go.work` to develop alongside a consumer.
 - Keep code, READMEs and `doc.go` exported-name lists in step.
-- `go test` enforces the layer rules through [`archtest/kit_test.go`](archtest/kit_test.go). It can't see inside nested Go modules, so give each one its own `archtest.Check`.
+- `go test` enforces the layer rules through [`archtest/kit_test.go`](archtest/kit_test.go), and README and naming rules through the root [`archtest.yaml`](archtest.yaml). It can't see inside nested Go modules, so give each one its own `archtest.Check`.
 - Report what you ran and what you didn't. An unrun check is not a pass.
 
 ```sh

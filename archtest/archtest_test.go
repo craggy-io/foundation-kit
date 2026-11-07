@@ -41,7 +41,15 @@ func mustRun(t *testing.T, c Config) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return problems
+	return formatAll(problems, "")
+}
+
+func formatAll(ds []diagnostic, config string) []string {
+	out := make([]string, len(ds))
+	for i, d := range ds {
+		out[i] = d.format(config)
+	}
+	return out
 }
 
 func requireProblems(t *testing.T, got []string, want ...string) {
@@ -116,9 +124,9 @@ func TestEveryViolationIsReportedWithItsReason(t *testing.T) {
 		Name: "no std", Why: "because", From: []string{"./..."}, Forbid: []string{Std},
 	}}})
 	requireProblems(t, got,
-		"example.com/m/a imports fmt (a.go)\n    rule \"no std\": because",
-		"example.com/m/a imports os",
-		"example.com/m/b imports os")
+		"a/a.go:3:8 [no std] repo.import_forbidden: example.com/m/a imports os\n    why: because",
+		"a/a.go:4:8 [no std] repo.import_forbidden: example.com/m/a imports fmt",
+		"b/b.go:3:8 [no std] repo.import_forbidden: example.com/m/b imports os")
 }
 
 func TestSkippedFilesAndDirectories(t *testing.T) {
@@ -193,9 +201,9 @@ func TestReplaceDirectives(t *testing.T) {
 		want  []string
 	}{
 		"none":           {goMod, nil},
-		"single":         {goMod + "replace a.com/b => ../b\n", []string{"line 4: replace a.com/b => ../b"}},
-		"block":          {goMod + "replace (\n\ta.com/b => ../b\n)\n", []string{"line 4: replace ("}},
-		"no space":       {goMod + "replace(\n\ta.com/b => ../b\n)\n", []string{"line 4: replace("}},
+		"single":         {goMod + "replace a.com/b => ../b\n", []string{"go.mod:4 repo.replace_forbidden: replace a.com/b => ../b"}},
+		"block":          {goMod + "replace (\n\ta.com/b => ../b\n)\n", []string{"go.mod:4 repo.replace_forbidden: replace ("}},
+		"no space":       {goMod + "replace(\n\ta.com/b => ../b\n)\n", []string{"go.mod:4 repo.replace_forbidden: replace("}},
 		"in a comment":   {goMod + "// replace a.com/b => ../b\n", nil},
 		"a similar word": {goMod + "replacement x\n", nil},
 	}
@@ -215,7 +223,7 @@ func TestUnparseableFileIsReportedWithTheRest(t *testing.T) {
 		"b/b.go": goFile("b", "os"),
 	})
 	got := mustRun(t, Config{Dir: dir, Rules: []Rule{{Name: "r", Why: "w", From: []string{"./b"}, Forbid: []string{"os"}}}})
-	requireProblems(t, got, "can't read imports", "imports os")
+	requireProblems(t, got, "a/a.go repo.parse_failed: can't read imports: a/a.go:1:1", "imports os")
 }
 
 func TestModuleThatCannotBeExaminedIsAnError(t *testing.T) {

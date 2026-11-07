@@ -52,7 +52,7 @@ defer lock.Unlock()
 
 `WriteNew` on Unix needs a filesystem with hard links.
 
-## Status
+## Implementation status
 
 - Working: `WriteFile`, `Write`, `WriteNew`, `SyncDir`, `SyncEntry`, `TryLock`.
 - Windows code is vetted by cross-compiling, but its tests haven't been run on Windows yet.

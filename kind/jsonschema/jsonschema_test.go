@@ -1,6 +1,8 @@
 package jsonschema_test
 
 import (
+	"errors"
+	"slices"
 	"testing"
 
 	"github.com/craggy-io/foundation-kit/bundle/bundletest"
@@ -50,5 +52,33 @@ func TestNewRejects(t *testing.T) {
 				t.Error("New succeeded")
 			}
 		})
+	}
+}
+
+func TestProblems(t *testing.T) {
+	s, err := jsonschema.New([]byte(profileSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Validate(map[string]any{"retries": -1, "extra": true})
+	got, ok := jsonschema.Problems(err)
+	if !ok {
+		t.Fatalf("Problems(%v) reported false", err)
+	}
+	pointers := make([]string, len(got))
+	for i, p := range got {
+		pointers[i] = p.Pointer
+		if p.Message == "" {
+			t.Errorf("problem at %q has no message", p.Pointer)
+		}
+	}
+	if want := []string{"", "", "/retries"}; !slices.Equal(pointers, want) {
+		t.Errorf("pointers = %q, want %q (%+v)", pointers, want, got)
+	}
+	if _, ok := jsonschema.Problems(errors.New("other")); ok {
+		t.Error("Problems accepted an unrelated error")
+	}
+	if _, ok := jsonschema.Problems(nil); ok {
+		t.Error("Problems accepted nil")
 	}
 }
