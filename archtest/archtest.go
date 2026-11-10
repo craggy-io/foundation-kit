@@ -101,7 +101,7 @@ func run(c Config) ([]diagnostic, error) {
 	if err != nil {
 		return nil, err
 	}
-	module, replaces, err := readGoMod(filepath.Join(dir, "go.mod"))
+	module, inner, replaces, err := readGoMod(filepath.Join(dir, "go.mod"))
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,7 @@ func run(c Config) ([]diagnostic, error) {
 	}
 	slices.Sort(names)
 
-	m := matcher{module: module, packages: names}
+	m := matcher{module: module, inner: inner, packages: names}
 	for i, r := range c.Rules {
 		bad := m.validate(i, r)
 		problems = append(problems, bad...)
@@ -154,8 +154,18 @@ type importSite struct {
 
 // matcher resolves patterns against one Go module.
 type matcher struct {
-	module   string
+	module string
+	// inner are the required modules whose paths are under module, such as
+	// github.com/x/y/client beside github.com/x/y. Go gives a package to the
+	// module with the longest matching path, so their packages are outside
+	// this one, whatever their directory.
+	inner    []string
 	packages []string
+}
+
+// own reports whether path is in this Go module rather than outside it.
+func (m matcher) own(path string) bool {
+	return under(path, m.module) && !slices.ContainsFunc(m.inner, func(in string) bool { return under(path, in) })
 }
 
 // resolve turns a local pattern into a full one, and leaves any other pattern alone.
@@ -172,16 +182,19 @@ func (m matcher) resolve(pattern string) string {
 // local reports whether pattern names packages in this Go module.
 func (m matcher) local(pattern string) bool {
 	full := m.resolve(pattern)
-	return full != Std && full != External && under(strings.TrimSuffix(full, "/..."), m.module)
+	return full != Std && full != External && m.own(strings.TrimSuffix(full, "/..."))
 }
 
 // matches reports whether path is matched by pattern.
 func (m matcher) matches(pattern, path string) bool {
 	switch pattern {
 	case Std:
-		return !under(path, m.module) && !firstElementHasDot(path)
+		return !m.own(path) && !firstElementHasDot(path)
 	case External:
-		return !under(path, m.module) && firstElementHasDot(path)
+		return !m.own(path) && firstElementHasDot(path)
+	}
+	if m.local(pattern) && !m.own(path) {
+		return false // "./..." stops at an inner module
 	}
 	full := m.resolve(pattern)
 	if base, ok := strings.CutSuffix(full, "/..."); ok {
@@ -308,14 +321,17 @@ type replaceDirective struct {
 	text string
 }
 
-// readGoMod returns the Go module's path and its replace directives.
-func readGoMod(path string) (module string, replaces []replaceDirective, err error) {
+// readGoMod returns the Go module's path, the required modules whose paths
+// are under it (matcher.inner) and its replace directives.
+func readGoMod(path string) (module string, inner []string, replaces []replaceDirective, err error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	defer f.Close()
 
+	var required []string
+	inRequire := false
 	sc := bufio.NewScanner(f)
 	for n := 1; sc.Scan(); n++ {
 		line, _, _ := strings.Cut(sc.Text(), "//")
@@ -324,19 +340,32 @@ func readGoMod(path string) (module string, replaces []replaceDirective, err err
 			continue
 		}
 		switch {
+		case inRequire && fields[0] == ")":
+			inRequire = false
+		case inRequire:
+			required = append(required, strings.Trim(fields[0], "\"`"))
 		case fields[0] == "module" && len(fields) == 2:
 			module = strings.Trim(fields[1], "\"`")
+		case fields[0] == "require" && len(fields) == 2 && fields[1] == "(", fields[0] == "require(":
+			inRequire = true
+		case fields[0] == "require" && len(fields) >= 3:
+			required = append(required, strings.Trim(fields[1], "\"`"))
 		case fields[0] == "replace" || strings.HasPrefix(fields[0], "replace("):
 			replaces = append(replaces, replaceDirective{line: n, text: strings.TrimSpace(line)})
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	if module == "" {
-		return "", nil, fmt.Errorf("%s has no module line", path)
+		return "", nil, nil, fmt.Errorf("%s has no module line", path)
 	}
-	return module, replaces, nil
+	for _, r := range required {
+		if r != module && under(r, module) {
+			inner = append(inner, r)
+		}
+	}
+	return module, inner, replaces, nil
 }
 
 // scan parses the imports of every Go file in the Go module. A file that doesn't parse

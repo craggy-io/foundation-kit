@@ -114,6 +114,29 @@ func TestModulePrefixIsNotMistakenForTheModule(t *testing.T) {
 	requireProblems(t, got, "imports example.com/mother/x")
 }
 
+// A required module whose path is under this one's (example.com/m/client
+// beside example.com/m, as Go resolves it by the longest module path) is
+// outside the module: "./..." doesn't forbid it, it can be allowed by its
+// full path, and External matches it.
+func TestRequiredModuleUnderTheModulePathIsOutsideIt(t *testing.T) {
+	for _, mod := range []string{
+		goMod + "\nrequire example.com/m/client v0.0.0\n",
+		goMod + "\nrequire (\n\texample.com/other v1.0.0\n\texample.com/m/client v0.0.0 // indirect\n)\n",
+	} {
+		dir := write(t, map[string]string{
+			"go.mod": mod,
+			"a/a.go": goFile("a", "example.com/m/client", "example.com/m/b"),
+			"b/b.go": goFile("b"),
+		})
+		got := mustRun(t, Config{Dir: dir, Rules: []Rule{{Name: "r", Why: "w", From: []string{"./a"}, Forbid: []string{"./..."}}}})
+		requireProblems(t, got, "imports example.com/m/b")
+		got = mustRun(t, Config{Dir: dir, Rules: []Rule{{Name: "r", Why: "w", From: []string{"./a"}, Forbid: []string{"./...", External}, Allow: []string{"./b", "example.com/m/client"}}}})
+		requireProblems(t, got)
+		got = mustRun(t, Config{Dir: dir, Rules: []Rule{{Name: "r", Why: "w", From: []string{"./a"}, Forbid: []string{External}}}})
+		requireProblems(t, got, "imports example.com/m/client")
+	}
+}
+
 func TestEveryViolationIsReportedWithItsReason(t *testing.T) {
 	dir := write(t, map[string]string{
 		"go.mod": goMod,
@@ -283,7 +306,7 @@ func TestDefaultDirFindsThisModule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	module, _, err := readGoMod(filepath.Join(dir, "go.mod"))
+	module, _, _, err := readGoMod(filepath.Join(dir, "go.mod"))
 	if err != nil || module != "github.com/craggy-io/foundation-kit" {
 		t.Fatalf("module = %q, %v", module, err)
 	}
