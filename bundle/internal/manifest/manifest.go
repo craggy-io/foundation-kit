@@ -3,9 +3,12 @@
 package manifest
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/craggy-io/foundation-kit/internal/strictyaml"
@@ -45,8 +48,32 @@ func ValidID(id string) bool { return idPattern.MatchString(id) }
 type Manifest struct {
 	APIVersion    string         `yaml:"apiVersion"`
 	Metadata      Metadata       `yaml:"metadata"`
+	Title         string         `yaml:"title,omitempty"`
+	Description   string         `yaml:"description,omitempty"`
+	Tags          []string       `yaml:"tags,omitempty"`
+	Trigger       any            `yaml:"trigger,omitempty"`
+	Application   *Contribution  `yaml:"application,omitempty"`
 	Dependencies  []Dependency   `yaml:"dependencies,omitempty"`
-	Contributions []Contribution `yaml:"contributions"`
+	Contributions []Contribution `yaml:"contributions,omitempty"`
+}
+
+// Entries returns the bundle's one application or its contribution list.
+func (m *Manifest) Entries() []Contribution {
+	if m.Application != nil {
+		return []Contribution{*m.Application}
+	}
+	return m.Contributions
+}
+
+// SetEntries keeps the single-application form when an edit still has one entry.
+func (m *Manifest) SetEntries(entries []Contribution) {
+	if m.Application != nil && len(entries) == 1 {
+		m.Application = &entries[0]
+		m.Contributions = nil
+		return
+	}
+	m.Application = nil
+	m.Contributions = entries
 }
 
 // Metadata identifies the bundle.
@@ -105,12 +132,39 @@ func Parse(data []byte) (*Manifest, []Diagnostic) {
 	}
 
 	m := &Manifest{}
-	var sawAPIVersion, sawMetadata bool
+	var sawAPIVersion, sawMetadata, sawApplication, sawContributions bool
 	p.fields(root, "the manifest", map[string]func(*strictyaml.Node){
 		"apiVersion": func(n *strictyaml.Node) { sawAPIVersion = true; m.APIVersion = p.str(n, "apiVersion") },
 		"metadata": func(n *strictyaml.Node) {
 			sawMetadata = true
 			p.metadata(n, &m.Metadata)
+		},
+		"title":       func(n *strictyaml.Node) { m.Title = p.str(n, "title") },
+		"description": func(n *strictyaml.Node) { m.Description = p.str(n, "description") },
+		"tags": func(n *strictyaml.Node) {
+			p.each(n, "tags", func(item *strictyaml.Node, at string) {
+				m.Tags = append(m.Tags, p.str(item, at))
+			})
+		},
+		"trigger": func(n *strictyaml.Node) {
+			data, diags := n.JSON()
+			for _, d := range diags {
+				p.diags = append(p.diags, Diagnostic{Code: codeInvalid, Line: d.Line, Column: d.Column, Message: d.Message})
+			}
+			if len(diags) == 0 {
+				dec := json.NewDecoder(bytes.NewReader(data))
+				dec.UseNumber()
+				if err := dec.Decode(&m.Trigger); err != nil {
+					p.at(n, codeInvalid, "", err.Error())
+				} else if m.Trigger, err = concreteNumbers(m.Trigger); err != nil {
+					p.at(n, codeInvalid, "", err.Error())
+				}
+			}
+		},
+		"application": func(n *strictyaml.Node) {
+			sawApplication = true
+			entry := p.contribution(n, "application")
+			m.Application = &entry
 		},
 		"dependencies": func(n *strictyaml.Node) {
 			p.each(n, "dependencies", func(item *strictyaml.Node, at string) {
@@ -118,6 +172,7 @@ func Parse(data []byte) (*Manifest, []Diagnostic) {
 			})
 		},
 		"contributions": func(n *strictyaml.Node) {
+			sawContributions = true
 			p.each(n, "contributions", func(item *strictyaml.Node, at string) {
 				m.Contributions = append(m.Contributions, p.contribution(item, at))
 			})
@@ -133,6 +188,10 @@ func Parse(data []byte) (*Manifest, []Diagnostic) {
 	if !sawMetadata {
 		p.at(root, codeInvalid, "", "metadata is required")
 	}
+	if sawApplication && sawContributions {
+		p.at(root, codeInvalid, "", "application and contributions cannot both be declared")
+	}
+	p.checkTags(m.Tags, root)
 	p.checkDependencies(m)
 	p.checkContributions(m)
 	return m, p.diags
@@ -140,7 +199,48 @@ func Parse(data []byte) (*Manifest, []Diagnostic) {
 
 // Encode writes m as bundle.yaml, in the order Parse reads it. Comments and line
 // numbers are not kept.
-func Encode(m *Manifest) ([]byte, error) { return strictyaml.Marshal(m) }
+func Encode(m *Manifest) ([]byte, error) {
+	return strictyaml.Marshal(m)
+}
+
+// concreteNumbers keeps integral trigger values exact through Encode and Edit.
+func concreteNumbers(v any) (any, error) {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, item := range x {
+			converted, err := concreteNumbers(item)
+			if err != nil {
+				return nil, err
+			}
+			x[k] = converted
+		}
+		return x, nil
+	case []any:
+		for i, item := range x {
+			converted, err := concreteNumbers(item)
+			if err != nil {
+				return nil, err
+			}
+			x[i] = converted
+		}
+		return x, nil
+	case json.Number:
+		if strings.ContainsAny(string(x), ".eE") {
+			n, err := strconv.ParseFloat(string(x), 64)
+			if err != nil {
+				return nil, fmt.Errorf("trigger number %s is out of range", x)
+			}
+			return n, nil
+		}
+		n, err := strconv.ParseInt(string(x), 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("trigger integer %s is out of range", x)
+		}
+		return n, nil
+	default:
+		return v, nil
+	}
+}
 
 type parser struct {
 	diags []Diagnostic
@@ -319,7 +419,7 @@ func (p *parser) checkDependencies(m *Manifest) {
 
 func (p *parser) checkContributions(m *Manifest) {
 	first := map[string]int{}
-	for _, c := range m.Contributions {
+	for _, c := range m.Entries() {
 		if c.ID == "" {
 			continue
 		}
@@ -329,6 +429,16 @@ func (p *parser) checkContributions(m *Manifest) {
 			continue
 		}
 		first[c.ID] = c.Line
+	}
+}
+
+func (p *parser) checkTags(tags []string, at *strictyaml.Node) {
+	seen := map[string]bool{}
+	for _, tag := range tags {
+		if tag == "" || strings.TrimSpace(tag) != tag || seen[tag] {
+			p.at(at, codeInvalid, "", fmt.Sprintf("tag %q must be nonempty, trimmed and unique", tag))
+		}
+		seen[tag] = true
 	}
 }
 

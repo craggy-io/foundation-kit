@@ -2,7 +2,9 @@
 // combines them with built-in definitions from Go code into one catalog.
 //
 // A bundle is a directory with a bundle.yaml manifest at its root. The manifest
-// names the bundle and lists its contributions, each with an ID, a kind and a path.
+// names the bundle and declares either one application or a list of
+// contributions, each with an ID, a kind and a path. Top-level title,
+// description, tags and trigger metadata belong to the whole bundle.
 // A folder without a bundle.yaml is not a bundle, and a manifest is never generated
 // from a folder layout or file names, not even by Live.Install. Live.Edit writes one
 // only from the contributions its caller names, one by one.
@@ -79,6 +81,7 @@
 //	Compile, AnyCompiler        pair a kind with its Compiler
 //	Compiler, Compiled          implement reading a kind from files
 //	Contribution                what a Compiler receives, with Dependency
+//	Metadata                    bundle-wide display and trigger data
 //	Catalog, Definition         the accepted result
 //	All, Get, Lookup            read typed definitions from a Catalog
 //	Live, NewLive               hold, reload, install and uninstall a live Catalog

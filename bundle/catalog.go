@@ -1,6 +1,7 @@
 package bundle
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -8,10 +9,26 @@ import (
 	"github.com/craggy-io/foundation-kit/kind"
 )
 
+// Metadata is the bundle-wide presentation and optional trigger declaration.
+// The host interpreting Trigger decides its meaning; bundle only preserves it.
+type Metadata struct {
+	Title       string
+	Description string
+	Tags        []string
+	Trigger     json.RawMessage
+}
+
+func (m Metadata) clone() Metadata {
+	m.Tags = slices.Clone(m.Tags)
+	m.Trigger = slices.Clone(m.Trigger)
+	return m
+}
+
 // Definition is the validated, immutable value of one contribution or built-in.
 type Definition[T any] struct {
-	Ref   Ref
-	Value T
+	Ref      Ref
+	Value    T
+	Metadata Metadata
 
 	// Owner identifies the bundle or provider this definition came from.
 	Owner Identity
@@ -43,10 +60,11 @@ type Catalog struct {
 
 // storedDefinition is a Definition with its type erased. Only Get reads the value.
 type storedDefinition struct {
-	kind   kind.ID
-	owner  Identity
-	value  any
-	assets []Asset
+	kind     kind.ID
+	owner    Identity
+	value    any
+	assets   []Asset
+	metadata Metadata
 }
 
 // All returns every effective definition of kind k in c, sorted by Ref. Each
@@ -78,10 +96,11 @@ func Get[T any](c *Catalog, k *kind.Kind[T], ref Ref) (Definition[T], bool) {
 		return Definition[T]{}, false
 	}
 	return Definition[T]{
-		Ref:    ref,
-		Value:  value,
-		Owner:  stored.owner,
-		Assets: slices.Clone(stored.assets),
+		Ref:      ref,
+		Value:    value,
+		Owner:    stored.owner,
+		Assets:   slices.Clone(stored.assets),
+		Metadata: stored.metadata.clone(),
 	}, true
 }
 
@@ -155,6 +174,18 @@ func (c *Catalog) Explain(ref Ref) string {
 		fmt.Fprintf(&b, "  override: replaces %s%s\n", target, c.via(t))
 	}
 	fmt.Fprintf(&b, "  owner:   %s %s\n", def.owner.ID, def.owner.Version)
+	if def.metadata.Title != "" {
+		fmt.Fprintf(&b, "  title:   %s\n", def.metadata.Title)
+	}
+	if def.metadata.Description != "" {
+		fmt.Fprintf(&b, "  description: %s\n", def.metadata.Description)
+	}
+	if len(def.metadata.Tags) > 0 {
+		fmt.Fprintf(&b, "  tags:    %s\n", strings.Join(def.metadata.Tags, ", "))
+	}
+	if len(def.metadata.Trigger) > 0 {
+		fmt.Fprintf(&b, "  trigger: %s\n", def.metadata.Trigger)
+	}
 	fmt.Fprintf(&b, "  origin:  %s\n", def.owner.Origin)
 	if def.owner.Digest == "" {
 		fmt.Fprintf(&b, "  digest:  none, because built-ins have no file bytes\n")

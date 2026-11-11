@@ -142,6 +142,40 @@ func hello(extra ...string) fstest.MapFS {
 	return fstest.MapFS{"bundle.yaml": {Data: []byte(m)}, "hello.txt": {Data: []byte("hello")}}
 }
 
+func TestApplicationMetadataReachesCompilerAndCatalog(t *testing.T) {
+	files := fstest.MapFS{
+		"bundle.yaml": {Data: []byte(`apiVersion: craggy.io/bundle/v1
+metadata: {id: example.application, version: 1.0.0}
+title: Investigate
+description: Inspect one object.
+tags: [research, binary]
+trigger: {on: records.changed, where: {type: elf}}
+application: {id: investigate, kind: example.greeting@1, path: workflow.txt}
+`)},
+		"workflow.txt": {Data: []byte("body")},
+	}
+	compiler := bundle.Compile(greeting, func(_ context.Context, c bundle.Contribution) (bundle.Compiled[string], []bundle.Diagnostic) {
+		if c.Metadata.Title != "Investigate" || string(c.Metadata.Trigger) == "" {
+			t.Errorf("compiler metadata = %+v", c.Metadata)
+		}
+		return bundle.Compiled[string]{Value: "compiled"}, nil
+	})
+	cat, err := load(t, bundle.Options{Sources: []bundle.Source{bundle.Embedded("application", files)}, Compilers: []bundle.AnyCompiler{compiler}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := bundle.Get(cat, greeting, bundle.Ref{Owner: "example.application", ID: "investigate"})
+	if !ok || got.Value != "compiled" || got.Metadata.Title != "Investigate" || got.Metadata.Description != "Inspect one object." || len(got.Metadata.Tags) != 2 {
+		t.Fatalf("definition = %+v, found = %v", got, ok)
+	}
+	got.Metadata.Tags[0] = "changed"
+	got.Metadata.Trigger[0] = 'x'
+	again, _ := bundle.Get(cat, greeting, got.Ref)
+	if again.Metadata.Tags[0] != "research" || again.Metadata.Trigger[0] != '{' {
+		t.Fatalf("catalog metadata mutated: %+v", again.Metadata)
+	}
+}
+
 func TestLoadBuiltinsAndOverrides(t *testing.T) {
 	defaults := kind.Provider{ID: "example.defaults", Version: "1.0.0", Builtins: []kind.AnyBuiltin{
 		kind.Builtin(greeting, "default", "hi"),

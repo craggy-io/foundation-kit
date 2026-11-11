@@ -39,6 +39,42 @@ func TestParse(t *testing.T) {
 	}
 }
 
+func TestApplicationMetadataRoundTrip(t *testing.T) {
+	src := `apiVersion: craggy.io/bundle/v1
+metadata: {id: example.workflow, version: 1.0.0}
+title: Example workflow
+description: Investigate one event.
+tags: [research, binary]
+trigger: {on: labs.records.changed, where: {recordClass: artifact}, cursor: 9007199254740993}
+application: {id: investigate, kind: agentsdk.workflow@1, path: workflow.star}
+`
+	m, diags := Parse([]byte(src))
+	if len(diags) != 0 {
+		t.Fatalf("parse: %+v", diags)
+	}
+	if len(m.Entries()) != 1 || m.Entries()[0].ID != "investigate" || m.Title != "Example workflow" || m.Description == "" || len(m.Tags) != 2 {
+		t.Fatalf("manifest: %+v", m)
+	}
+	b, err := Encode(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, diags := Parse(b)
+	if len(diags) != 0 || again.Application == nil || again.Trigger == nil || len(again.Contributions) != 0 {
+		t.Fatalf("roundtrip: %+v, %+v\n%s", again, diags, b)
+	}
+	if got := again.Trigger.(map[string]any)["cursor"]; got != m.Trigger.(map[string]any)["cursor"] {
+		t.Fatalf("numeric trigger value changed: %T %v -> %T %v", m.Trigger.(map[string]any)["cursor"], m.Trigger, got, again.Trigger)
+	}
+}
+
+func TestSupportOnlyBundleHasNoEntry(t *testing.T) {
+	m, diags := Parse([]byte("apiVersion: craggy.io/bundle/v1\nmetadata: {id: shared.support, version: 1.0.0}\n"))
+	if len(diags) != 0 || len(m.Entries()) != 0 {
+		t.Fatalf("support-only bundle = %+v, %+v", m, diags)
+	}
+}
+
 func TestParseRejects(t *testing.T) {
 	base := "apiVersion: craggy.io/bundle/v1\nmetadata: {id: a, version: '1'}\n"
 	tests := []struct {
@@ -49,6 +85,8 @@ func TestParseRejects(t *testing.T) {
 		{"not a mapping", "- a\n", codeInvalid, 1},
 		{"syntax", "apiVersion: [\n", codeInvalid, 0},
 		{"unknown field", base + "owner: me\n", codeInvalid, 3},
+		{"both entry forms", base + "application: {id: x, kind: a.b@1, path: a}\ncontributions: [{id: y, kind: a.b@1, path: b}]\n", codeInvalid, 1},
+		{"duplicate tags", base + "tags: [research, research]\napplication: {id: x, kind: a.b@1, path: a}\n", codeInvalid, 1},
 		{"wrong apiVersion", "apiVersion: v2\nmetadata: {id: a, version: '1'}\n", codeInvalid, 1},
 		{"no apiVersion", "metadata: {id: a, version: '1'}\n", codeInvalid, 1},
 		{"no metadata", "apiVersion: craggy.io/bundle/v1\n", codeInvalid, 1},

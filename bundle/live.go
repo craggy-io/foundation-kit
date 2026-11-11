@@ -302,36 +302,38 @@ func (l *Live) Edit(ctx context.Context, dir, id string, put []Put, remove []str
 	if err != nil {
 		return Identity{}, err
 	}
+	entries := m.Entries()
 	var dropped []string
 	for _, r := range remove {
-		i := slices.IndexFunc(m.Contributions, func(c manifest.Contribution) bool { return c.ID == r })
+		i := slices.IndexFunc(entries, func(c manifest.Contribution) bool { return c.ID == r })
 		if i < 0 {
 			return Identity{}, fmt.Errorf("bundle: edit: %s declares no contribution %q: %w", id, r, fs.ErrNotExist)
 		}
-		dropped = append(dropped, m.Contributions[i].Path)
-		m.Contributions = slices.Delete(m.Contributions, i, i+1)
+		dropped = append(dropped, entries[i].Path)
+		entries = slices.Delete(entries, i, i+1)
 	}
 	for _, p := range put {
-		i := slices.IndexFunc(m.Contributions, func(c manifest.Contribution) bool { return c.ID == p.ID })
-		if j := slices.IndexFunc(m.Contributions, func(c manifest.Contribution) bool { return c.Path == p.Path }); j >= 0 && j != i {
-			return Identity{}, fmt.Errorf("bundle: edit: %s is contribution %q's path, not %q's", p.Path, m.Contributions[j].ID, p.ID)
+		i := slices.IndexFunc(entries, func(c manifest.Contribution) bool { return c.ID == p.ID })
+		if j := slices.IndexFunc(entries, func(c manifest.Contribution) bool { return c.Path == p.Path }); j >= 0 && j != i {
+			return Identity{}, fmt.Errorf("bundle: edit: %s is contribution %q's path, not %q's", p.Path, entries[j].ID, p.ID)
 		}
 		if i < 0 {
-			m.Contributions = append(m.Contributions, manifest.Contribution{ID: p.ID})
-			i = len(m.Contributions) - 1
+			entries = append(entries, manifest.Contribution{ID: p.ID})
+			i = len(entries) - 1
 		}
-		dropped = append(dropped, m.Contributions[i].Path)
-		m.Contributions[i].Kind, m.Contributions[i].Path = p.Kind.String(), p.Path
+		dropped = append(dropped, entries[i].Path)
+		entries[i].Kind, entries[i].Path = p.Kind.String(), p.Path
 		files[p.Path] = &fstest.MapFile{Data: p.Data, Mode: 0o644}
 	}
 	for _, p := range dropped {
-		if !slices.ContainsFunc(m.Contributions, func(c manifest.Contribution) bool { return c.Path == p }) {
+		if !slices.ContainsFunc(entries, func(c manifest.Contribution) bool { return c.Path == p }) {
 			delete(files, p)
 		}
 	}
-	if len(m.Contributions) == 0 {
+	if len(entries) == 0 {
 		return Identity{}, l.uninstall(ctx, dir, id)
 	}
+	m.SetEntries(entries)
 	data, err := manifest.Encode(m)
 	if err != nil {
 		return Identity{}, fmt.Errorf("bundle: edit: %w", err)

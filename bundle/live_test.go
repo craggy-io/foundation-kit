@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/craggy-io/foundation-kit/bundle"
@@ -398,6 +399,31 @@ func TestLiveEdit(t *testing.T) {
 		t.Error("helper is still in the catalog")
 	}
 	assertOnlyInstalled(t, h.installed)
+}
+
+func TestLiveEditPreservesApplicationAndTrigger(t *testing.T) {
+	ctx := context.Background()
+	h := newHost(t)
+	l := h.live(t)
+	_, err := l.Install(ctx, h.installed, fstest.MapFS{
+		"bundle.yaml": {Data: []byte(`apiVersion: craggy.io/bundle/v1
+metadata: {id: user.application, version: 1.0.0}
+title: One application
+trigger: {on: records.changed}
+application: {id: helper, kind: example.agent@1, path: helper.txt}
+`)},
+		"helper.txt": {Data: []byte("v1")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Edit(ctx, h.installed, "user.application", []bundle.Put{{ID: "helper", Kind: agent.ID(), Path: "helper.txt", Data: []byte("v2")}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(h.installed, "user.application", "bundle.yaml"))
+	if err != nil || !strings.Contains(string(b), "application:") || !strings.Contains(string(b), "trigger:") || strings.Contains(string(b), "contributions:") {
+		t.Fatalf("edited manifest = %s, %v", b, err)
+	}
 }
 
 func assertOnlyInstalled(t *testing.T, dir string, want ...string) {

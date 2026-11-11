@@ -3,6 +3,7 @@ package bundle
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 	"runtime"
 	"slices"
@@ -40,19 +41,29 @@ type loader struct {
 type loadedBundle struct {
 	source   Source
 	identity Identity
+	metadata Metadata
 	manifest *manifest.Manifest
 	snap     *snapshot.Snapshot
 	defs     []compiledDefinition
 }
 
+func metadataOf(m *manifest.Manifest) Metadata {
+	out := Metadata{Title: m.Title, Description: m.Description, Tags: slices.Clone(m.Tags)}
+	if m.Trigger != nil {
+		out.Trigger, _ = json.Marshal(m.Trigger) // Parse admits JSON-compatible values only.
+	}
+	return out
+}
+
 // compiledDefinition is one contribution after the Compile and Check stages.
 type compiledDefinition struct {
-	ref    Ref
-	kind   kind.AnyKind
-	value  any
-	refs   []Ref
-	assets []Asset
-	key    compileKey
+	ref      Ref
+	kind     kind.AnyKind
+	value    any
+	refs     []Ref
+	assets   []Asset
+	metadata Metadata
+	key      compileKey
 }
 
 // compileKey identifies everything a compiler can see, so that a value compiled
@@ -191,7 +202,8 @@ func (l *loader) read(ctx context.Context, src Source) *loadedBundle {
 		assetDigests[p] = info.Digest
 	}
 	b := &loadedBundle{
-		source: src,
+		source:   src,
+		metadata: metadataOf(m),
 		identity: Identity{
 			ID:      label,
 			Version: m.Metadata.Version,
@@ -204,7 +216,7 @@ func (l *loader) read(ctx context.Context, src Source) *loadedBundle {
 
 	valid := len(manifestDiags) == 0
 	referenced := map[string]bool{}
-	for _, c := range m.Contributions {
+	for _, c := range m.Entries() {
 		at := Diagnostic{Bundle: label, Contribution: c.ID, Path: manifest.FileName, Line: c.Line}
 		if c.Kind != "" {
 			id, err := kind.ParseID(c.Kind)
@@ -341,8 +353,9 @@ func (l *loader) compileAll(ctx context.Context, bundles []*loadedBundle) {
 			}
 			depKey.WriteString(";")
 		}
-		b.defs = make([]compiledDefinition, len(b.manifest.Contributions))
-		for i, mc := range b.manifest.Contributions {
+		entries := b.manifest.Entries()
+		b.defs = make([]compiledDefinition, len(entries))
+		for i, mc := range entries {
 			id, _ := kind.ParseID(mc.Kind) // checked by read
 			assets := make([]Asset, 0, len(mc.Assets))
 			for _, p := range mc.Assets {
@@ -352,9 +365,9 @@ func (l *loader) compileAll(ctx context.Context, bundles []*loadedBundle) {
 			ref := Ref{Owner: b.identity.ID, ID: mc.ID}
 			key := compileKey{origin: b.identity.Origin, bundle: b.identity.Digest,
 				dependencies: depKey.String(), kind: id, contribution: mc.ID}
-			b.defs[i] = compiledDefinition{ref: ref, kind: l.compilers[id].Kind(), assets: assets, key: key}
+			b.defs[i] = compiledDefinition{ref: ref, kind: l.compilers[id].Kind(), assets: assets, metadata: b.metadata, key: key}
 			j := &job{bundle: b, index: i, comp: l.compilers[id], c: Contribution{
-				Ref: ref, Kind: id, Bundle: b.identity, Path: mc.Path, Files: files, Assets: slices.Clone(assets),
+				Ref: ref, Kind: id, Bundle: b.identity, Metadata: b.metadata.clone(), Path: mc.Path, Files: files, Assets: slices.Clone(assets),
 				dependencies: deps,
 			}}
 			if l.prev != nil {
@@ -494,7 +507,7 @@ func accept(bundles []*loadedBundle, providers []loadedProvider, o Options, res 
 		c.owners = append(c.owners, b.identity)
 		in.BundleDigests[b.identity.ID] = b.identity.Digest
 		for _, def := range b.defs {
-			c.definitions[def.ref] = storedDefinition{kind: def.kind.ID(), owner: b.identity, value: def.value, assets: def.assets}
+			c.definitions[def.ref] = storedDefinition{kind: def.kind.ID(), owner: b.identity, value: def.value, assets: def.assets, metadata: def.metadata}
 			c.compiled[def.key] = compiledValue{value: def.value, refs: def.refs}
 			kinds[def.kind.ID().String()] = true
 			globalKinds[def.kind.ID()] = def.kind.Global()

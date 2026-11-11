@@ -12,7 +12,7 @@ Kinds are declared in the [`kind`](../kind/README.md) package. Terms used here a
 
 ## Bundle layout
 
-A bundle is a directory with exactly one `bundle.yaml`, at its root. **Every bundle needs a real `bundle.yaml` on disk** (or in its embedded file system): a folder without one isn't a bundle, and nothing in the kit generates a manifest from a folder layout or file names, including `Live.Install`. `Live.Edit` writes one only from the contributions its caller names. Assets go in an `assets/` directory at the root. Everything else is laid out however suits the author, because the manifest gives each contribution's path.
+A bundle is a directory with exactly one `bundle.yaml`, at its root. **Every bundle needs a real `bundle.yaml` on disk** (or in its embedded file system): a folder without one isn't a bundle, and nothing in the kit generates a manifest from a folder layout or file names, including `Live.Install`. `Live.Edit` writes one only from the entries its caller names. Assets go in an `assets/` directory at the root. Everything else is laid out however suits the author, because the manifest gives each entry's path.
 
 ```text
 android-research/
@@ -39,7 +39,12 @@ apiVersion: craggy.io/bundle/v1
 metadata:
   id: example.android-research   # required: the bundle's identity
   version: 0.1.0                 # required: the author's release label
-  title: Android research        # optional
+  title: Android research pack   # optional package title
+
+title: Android research          # optional display title
+description: Research Android application behavior
+tags: [android, research]
+trigger: {on: records.changed}  # optional; the consumer interprets it
 
 dependencies:                    # optional: bundles this one may reference
   - id: example.shared-prompts
@@ -57,6 +62,28 @@ contributions:                   # the entries in this bundle
       - assets/prompts/review.md
       - assets/models/classifier.bin
 ```
+
+Use `application` instead of `contributions` when the bundle supplies one
+primary definition of any kind:
+
+```yaml
+apiVersion: craggy.io/bundle/v1
+metadata: {id: example.investigation, version: 1.0.0}
+title: Investigation
+description: Investigate a new artifact
+tags: [research]
+trigger: {on: records.changed, where: {class: artifact}}
+application: {id: investigate, kind: example.workflow@1, path: workflow.star}
+```
+
+`application` and `contributions` are mutually exclusive; a support-only
+bundle may have neither. The fields on
+`application` are the same as one contribution's fields. `title`,
+`description`, `tags` and `trigger` belong to the whole bundle and reach each
+definition through `Definition.Metadata`. Bundle loading preserves the
+JSON-compatible `trigger` value; a consuming application decides whether and
+how to use it. It must validate the fields it interprets. `metadata.title`
+continues to name the distribution; top-level `title` is its display title.
 
 Bundle, dependency, provider, built-in and contribution IDs use letters, digits, `.`, `_` and `-`, and start and end with a letter or digit. String fields must be YAML strings, so quote a value such as `version: "1.0"` that YAML would read as a number.
 

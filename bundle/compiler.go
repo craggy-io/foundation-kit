@@ -9,9 +9,10 @@ import (
 
 // Contribution is one entry declared in a manifest, as presented to its Compiler.
 type Contribution struct {
-	Ref    Ref
-	Kind   kind.ID
-	Bundle Identity
+	Ref      Ref
+	Kind     kind.ID
+	Bundle   Identity
+	Metadata Metadata
 
 	// Path is the contribution's path from bundle.yaml, relative to Files.
 	Path string
