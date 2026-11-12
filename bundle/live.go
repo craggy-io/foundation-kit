@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/craggy-io/foundation-kit/bundle/internal/manifest"
+	"github.com/craggy-io/foundation-kit/bundle/internal/snapshot"
 	"github.com/craggy-io/foundation-kit/kind"
 )
 
@@ -185,7 +186,7 @@ func (l *Live) install(ctx context.Context, dir string, files fs.FS) (Identity, 
 	}
 	defer os.RemoveAll(stage)
 	candidate := filepath.Join(stage, "bundle")
-	if err := os.CopyFS(candidate, files); err != nil {
+	if err := os.CopyFS(candidate, snapshot.Visible(files)); err != nil {
 		return Identity{}, fmt.Errorf("bundle: install: copying files: %w", err)
 	}
 
@@ -354,14 +355,15 @@ func readInstalled(ctx context.Context, path, id string) (fstest.MapFS, *manifes
 		return nil, nil, fmt.Errorf("bundle: edit: %w", err)
 	}
 	defer root.Close()
-	err = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+	installed := snapshot.Visible(root.FS())
+	err = fs.WalkDir(installed, ".", func(p string, d fs.DirEntry, err error) error {
 		switch {
 		case err != nil || d.IsDir():
 			return err
 		case !d.Type().IsRegular():
 			return fmt.Errorf("%s is not a regular file", p)
 		}
-		data, err := fs.ReadFile(root.FS(), p)
+		data, err := fs.ReadFile(installed, p)
 		files[p] = &fstest.MapFile{Data: data, Mode: 0o644}
 		return err
 	})

@@ -83,7 +83,8 @@ In a taxonomy, an **owner** is whoever declared a set of types: a library, a bun
 | **Contribution** | One entry declared in a manifest, with an ID, a kind and a path | An object in a global lookup |
 | **Application** | A bundle's single primary contribution, declared with `application` instead of a `contributions` list | A running process or a new kind |
 | **Asset** | A file under a bundle's `assets/` directory, listed by the contributions that use it. Its bytes are read on demand, by a compiler or consumer. | A contribution, or bytes held in the catalog |
-| **Support file** | A file in a bundle outside `assets/` that isn't the manifest or a contribution, and is read by a compiler | An asset |
+| **Support file** | A file in a bundle outside `assets/` that isn't the manifest or a contribution. A compiler reads it during `Load`, and a consumer reads it afterwards through `Catalog.Files` | An asset |
+| **Ignored file** | A file or folder in a bundle's directory whose name is on the loader's fixed list, such as `.git` or `node_modules`. It isn't part of the bundle: not hashed, counted, compiled or installed | A file a bundle's author chose to leave out |
 | **Compiler** | The function that turns one contribution into a definition | The loader |
 | **Source** | Where the files of exactly one bundle come from | A directory of many bundles |
 | **Snapshot** | The immutable copy of a bundle's accepted files, apart from its assets, which it records by size and digest | A live view of a directory |

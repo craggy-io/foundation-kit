@@ -3,6 +3,7 @@ package bundle
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"slices"
 	"strings"
 
@@ -56,6 +57,7 @@ type Catalog struct {
 	layers      map[string]string          // Options.BundleOverrides, target owner to replacement owner
 	global      map[kind.ID]map[string]Ref // effective definitions of global kinds, by contribution ID
 	compiled    map[compileKey]compiledValue
+	files       map[string]fs.FS // each bundle's snapshot, by owner ID
 }
 
 // storedDefinition is a Definition with its type erased. Only Get reads the value.
@@ -142,6 +144,20 @@ func (c *Catalog) Overrides() []Override {
 // It covers a bundle's exact bytes, but only a provider's ID and Version. Changing a
 // built-in's value without changing its provider's Version does not change the digest.
 func (c *Catalog) Digest() string { return c.digest }
+
+// Files returns the accepted files of the bundle with the given owner ID: its
+// manifest, contributions and support files, exactly as Load read and hashed
+// them. Assets aren't included, so read those through a definition's Assets. It
+// reports false for a provider, which has no files, and for an unknown owner.
+//
+// Use it for work that needs a bundle's files after Load has returned, such as
+// building a program from source a bundle ships. Reading the bundle's folder
+// instead would give whatever is on disk now, which may no longer match the
+// owner's Digest. The view is read-only, and holds no ignored files.
+func (c *Catalog) Files(owner string) (fs.FS, bool) {
+	files, ok := c.files[owner]
+	return files, ok
+}
 
 // Owners returns the identity of every accepted bundle and provider, sorted by ID.
 func (c *Catalog) Owners() []Identity {

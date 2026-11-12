@@ -131,6 +131,15 @@ Because the bytes stay in the `Source`, reading an asset can fail after `Load` h
 - **Changed content:** the read returns `ErrAssetChanged`, because the bytes no longer match the digest in the catalog.
 - **Removed file:** the read returns an error matching `fs.ErrNotExist`.
 
+Support files stay readable after `Load` too, through the catalog:
+
+```go
+files, ok := catalog.Files("example.hello") // the bundle's owner ID
+main, err := fs.ReadFile(files, "src/main.go")
+```
+
+`Catalog.Files` returns the manifest, contributions and support files exactly as `Load` read and hashed them, so they always match the owner's digest. Use it for work that happens after loading, such as building a program from source a bundle ships. Reading the bundle's folder instead gives whatever is on disk now.
+
 A `Source` must therefore keep working for as long as its catalog is in use. An `Embedded` source can't change, so it's the safest choice for assets that must always be readable.
 
 ## Rules
@@ -141,6 +150,7 @@ A `Source` must therefore keep working for as long as its catalog is in use. An 
 - **There is one manifest per bundle.** A `bundle.yaml` anywhere other than the root is an error.
 - **The YAML is strict.** Duplicate keys, aliases, merge keys, custom tags and unknown fields are errors.
 - **Paths stay inside the bundle.** Escaping paths and symlinks are errors.
+- **Ignored files aren't part of the bundle.** A file or folder with one of these names, at any depth, is treated as if it weren't there: `.git`, `.hg`, `.svn`, `node_modules`, `.venv`, `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.dart_tool`, `.idea`, `.vscode`, `.DS_Store`, `Thumbs.db` and `desktop.ini`. It isn't hashed, counted against the limits, visible to a compiler or in `Catalog.Files`, or copied by `Live.Install`. Tools write these into a folder someone is working in, and the list is fixed so that no file inside a bundle decides what gets hashed. A program run straight from a bundle's folder can still read them from disk, so build or run from `Catalog.Files` when that matters.
 - **Assets stay in `assets/`.** A listed asset must be a file under `assets/`, and a contribution's `path` must be outside it.
 - **Assets are declared.** A listed asset that doesn't exist is an error, and so is a file under `assets/` that no contribution lists. Contributions can share an asset.
 - **Malformed kinds and kinds with no compiler are errors.** To disable a feature, leave its bundles out of `Options.Sources`.
@@ -364,7 +374,8 @@ Working and tested:
 - `Live`: `NewLive`, `Catalog`, `Reload`, `Run`, `Subscribe`, `Install`, `Uninstall`, `Edit`, with compile reuse, tested under `-race`
 - `Children`
 - `Dir`, through `os.OpenRoot`, and `Embedded`
-- `Catalog`, `Catalog.Digest`, `Catalog.Owners`, `Catalog.Explain`, `Catalog.Overrides`, `All` and `Get`
+- `Catalog`, `Catalog.Digest`, `Catalog.Owners`, `Catalog.Files`, `Catalog.Explain`, `Catalog.Overrides`, `All` and `Get`
+- A fixed list of ignored file and folder names, applied to loading, installing and editing alike
 - `Asset`, including verified `Read` and `Open`
 - `Compile`, `Ref`, `ParseRef`, `Identity`, `LoadError` and every diagnostic code
 - `compile.Text`, `compile.JSON` and `compile.YAML`

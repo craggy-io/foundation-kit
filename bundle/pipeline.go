@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"runtime"
 	"slices"
 	"sort"
@@ -495,6 +496,7 @@ func accept(bundles []*loadedBundle, providers []loadedProvider, o Options, res 
 		global:      map[kind.ID]map[string]Ref{},
 		compiled:    map[compileKey]compiledValue{},
 		layers:      map[string]string{},
+		files:       map[string]fs.FS{},
 	}
 	in := digest.CatalogInput{
 		BundleDigests: map[string]string{},
@@ -505,6 +507,7 @@ func accept(bundles []*loadedBundle, providers []loadedProvider, o Options, res 
 	globalKinds := map[kind.ID]bool{}
 	for _, b := range bundles {
 		c.owners = append(c.owners, b.identity)
+		c.files[b.identity.ID] = b.snap.FS()
 		in.BundleDigests[b.identity.ID] = b.identity.Digest
 		for _, def := range b.defs {
 			c.definitions[def.ref] = storedDefinition{kind: def.kind.ID(), owner: b.identity, value: def.value, assets: def.assets, metadata: def.metadata}

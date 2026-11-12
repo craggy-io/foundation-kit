@@ -75,11 +75,13 @@ type Diagnostic struct {
 // file under it. It reports every problem it finds, and returns a nil Snapshot if
 // there are any.
 //
-// Symlinks and other non-regular files are rejected rather than followed, and so is
-// a bundle.yaml anywhere but the root. Limits are applied while reading. After Take
+// Ignored files and directories (see Ignored) are left out as if they weren't
+// there. Symlinks and other non-regular files are rejected rather than followed,
+// and so is a bundle.yaml anywhere but the root. Limits are applied while reading. After Take
 // returns, nothing reopens a snapshotted path except bundle.Asset, which checks
 // what it reads against the digest recorded here.
 func Take(ctx context.Context, fsys fs.FS, limits Limits) (*Snapshot, []Diagnostic) {
+	fsys = Visible(fsys)
 	t := &taker{ctx: ctx, fsys: fsys, limits: limits,
 		snap: &Snapshot{files: map[string][]byte{}, assets: map[string]AssetInfo{}}}
 	err := fs.WalkDir(fsys, ".", t.visit)
