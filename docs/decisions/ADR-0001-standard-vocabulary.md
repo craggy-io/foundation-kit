@@ -100,6 +100,18 @@ In a taxonomy, an **owner** is whoever declared a set of types: a library, a bun
 | --- | --- | --- |
 | **Setting** | A live value a person can change at run time, declared by the code that reads it | A definition, which is authored and shipped, or a `Config` field fixed at startup |
 
+### State machines
+
+| Term | Meaning | Must not mean |
+| --- | --- | --- |
+| **State machine** | A `statemachine.Machine`: a validated, immutable set of states and the transitions between them, declared by the consumer that owns them | A shared set of states for every library, or the current state of anything |
+| **State** | One of a state machine's named positions, of a type the consumer chooses | A definition, or a service's fields |
+| **Event** | What a consumer fires to ask a state machine to move | A feed entry, or a log line |
+| **Transition** | The move from one state to another on one event, with an optional guard and action | A migration between versions |
+| **Guard** | A transition's check, which refuses the transition by returning an error | Validation of a spec |
+| **Tracker** | A `statemachine.Tracker`: the current state of one thing moving through a state machine, held in memory | The state machine, or stored state |
+| **Fire** (verb) | Send an event to a state machine or tracker, running the transition's guard and action | Publish to a feed |
+
 ### Verbs
 
 | Verb | Meaning |

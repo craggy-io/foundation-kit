@@ -63,10 +63,11 @@ func ExampleNew_inconsistent() {
 		Name:     "job",
 		States:   []State{Pending, Running, Done, Failed},
 		Initial:  Pending,
-		Terminal: []State{Done},
+		Terminal: []State{Done, Failed},
 		Transitions: []statemachine.Transition[State, Event]{
 			{From: Pending, On: Start, To: Running},
-			{From: Done, On: Fail, To: Failed},
+			{From: Running, On: Finish, To: Done},
+			{From: Done, On: Start, To: Running},
 		},
 	})
 	var invalid *statemachine.Error
@@ -77,7 +78,5 @@ func ExampleNew_inconsistent() {
 	}
 	// Output:
 	// statemachine.terminal_exit done
-	// statemachine.state_dead_end running
 	// statemachine.state_unreachable failed
-	// statemachine.state_dead_end failed
 }
