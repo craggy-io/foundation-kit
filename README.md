@@ -66,7 +66,7 @@ The kit is organised in layers, and imports only ever point down. This is what l
 
 <p align="center">
   <a href="docs/assets/foundation-kit-architecture.svg">
-    <img src="docs/assets/foundation-kit-architecture.svg" alt="Foundation Kit layers, top to bottom: your applications and libraries; extensions (bundle/compile, kind/jsonschema); engines (bundle, settings, and the small engines fsx, canonjson and retryafter); contracts (kind); the Go standard library. Imports only point down. Test support (bundletest, archtest) sits alongside and only tests import it." width="100%">
+    <img src="docs/assets/foundation-kit-architecture.svg" alt="Foundation Kit layers, top to bottom: your applications and libraries; extensions (bundle/compile, kind/jsonschema); engines (bundle, settings, and the small engines fsx, canonjson and retryafter); contracts (kind, taxonomy); the Go standard library. Imports only point down. Test support (bundletest, archtest) sits alongside and only tests import it." width="100%">
   </a>
 </p>
 
@@ -85,6 +85,7 @@ Nothing in the kit knows about any product. If a package needs a word like "lab"
 | Package | Layer | Purpose | Status |
 | --- | --- | --- | --- |
 | [`kind`](kind/README.md) | Contracts | Versioned types of definition, with optional schemas and built-ins | Working |
+| [`taxonomy`](taxonomy/README.md) | Contracts | One shared graph of named types and what each is a kind of, which owners add to at run time | Working; first consumer classification-services |
 | [`bundle`](bundle/README.md) | Engines | Loads bundles and built-ins into one catalog, with bundle-level overrides, global kinds, and `Live` reloading and installs | Working, consumers being migrated |
 | `bundle/compile` | Extensions | Ready-made compilers for text, JSON and YAML | Working |
 | `kind/jsonschema` | Extensions | JSON Schema support for kinds | Working |

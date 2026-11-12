@@ -62,6 +62,18 @@ Adopt the vocabulary below for exported names, package and file names, manifest 
 | **Effective definition** | A definition that isn't an override target, and so is what readers see | The first definition found |
 | **Identity** | An owner's ID, version, digest and origin | Only its ID |
 
+### Types
+
+| Term | Meaning | Must not mean |
+| --- | --- | --- |
+| **Type** | A named thing that content or data can be, such as `archive.zip`, with the types it is a kind of ([ADR-0004](ADR-0004-shared-taxonomy.md)) | A kind, a Go type, or a record field type |
+| **Parent** | A type that another type is directly a kind of. A type may have several. | A containing folder or namespace |
+| **Root** | A type with no parents | A bundle source |
+| **Taxonomy** | The immutable, validated graph of types | A catalog of definitions, or a tree |
+| **Live taxonomy** | A `taxonomy.Live`: the current taxonomy of a running host, replaced whole by each successful change | A taxonomy changed in place |
+
+In a taxonomy, an **owner** is whoever declared a set of types: a library, a bundle or the host.
+
 ### Bundles
 
 | Term | Meaning | Must not mean |
@@ -101,6 +113,8 @@ Adopt the vocabulary below for exported names, package and file names, manifest 
 | **Reload** | Run `Load` again for a live catalog, and swap it in only if it succeeds |
 | **Install** | Place a bundle, with its own manifest, in an install folder through a validated reload |
 | **Uninstall** | Remove an installed bundle through a validated reload |
+| **Declare** | Replace the types one owner contributes to a live taxonomy, and publish only if the whole graph is still valid |
+| **Withdraw** | Remove the types one owner contributes to a live taxonomy, refused while other owners build on them |
 | **Run** | Own a blocking loop until cancellation or failure |
 | **Close** | Release what `Open` acquired |
 
@@ -126,7 +140,7 @@ Adopt the vocabulary below for exported names, package and file names, manifest 
 | Unit, Envelope, Handle | Contribution or definition, manifest, `Definition[T]` |
 | Codec, Handler | Compiler |
 | Pack, as an architectural term | Bundle, or a contribution of a kind that has "pack" in its name |
-| Root, for a stack of bundle sources | Source |
+| Root, for a stack of bundle sources | Source. A root is a type with no parents. |
 | Entry, Item, Problem | Contribution, definition, diagnostic |
 
 ## Options considered

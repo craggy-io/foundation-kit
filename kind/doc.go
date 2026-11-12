@@ -13,8 +13,8 @@
 //   - Go code: a Provider supplies built-ins, which need no compiler.
 //
 // A kind describes a type of definition. It is not a general type system: content
-// types such as "archive.zip" and record field types belong to the libraries that
-// own them.
+// types such as "archive.zip" are named in package taxonomy, and record field
+// types belong to the libraries that own them.
 //
 // Terms in this package are defined in
 // docs/decisions/ADR-0001-standard-vocabulary.md.

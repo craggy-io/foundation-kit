@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="876" viewBox="0 0 1280 876" role="img" aria-labelledby="title desc">
 <title id="title">Foundation Kit layers</title>
-<desc id="desc">Five tiers, top to bottom: your applications and libraries; extensions (bundle/compile, kind/jsonschema); engines (bundle, settings, and the small engines fsx, canonjson and retryafter); contracts (kind); the Go standard library. Imports only point down, and a layer may import any layer below it. Test support (bundletest, archtest) sits alongside the layers and is imported only by tests.</desc>
+<desc id="desc">Five tiers, top to bottom: your applications and libraries; extensions (bundle/compile, kind/jsonschema); engines (bundle, settings, and the small engines fsx, canonjson and retryafter); contracts (kind, taxonomy); the Go standard library. Imports only point down, and a layer may import any layer below it. Test support (bundletest, archtest) sits alongside the layers and is imported only by tests.</desc>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#FFB547" stroke-width="1.5"/></marker></defs>
 <rect width="1280" height="876" rx="20" fill="#111A20"/>
 <g font-family="'JetBrains Mono', Consolas, 'Liberation Mono', monospace">
@@ -36,9 +36,12 @@
 <path d="M730 508 V544" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
 <text x="744" y="532" font-size="16" fill="#FFB547" font-weight="400" text-anchor="start">imports</text>
 <text x="40" y="601" font-size="17" fill="#FFB547" font-weight="700" text-anchor="start">CONTRACTS</text>
-<rect x="576" y="548" width="307" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
-<text x="729" y="586" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">kind</text>
-<text x="729" y="616" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">versioned kinds, built-ins</text>
+<rect x="403" y="548" width="307" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="556" y="586" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">kind</text>
+<text x="556" y="616" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">versioned kinds, built-ins</text>
+<rect x="750" y="548" width="307" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="903" y="586" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">taxonomy</text>
+<text x="903" y="616" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">shared graph of types</text>
 <path d="M730 644 V680" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
 <text x="744" y="668" font-size="16" fill="#FFB547" font-weight="400" text-anchor="start">imports</text>
 <text x="40" y="737" font-size="17" fill="#FFB547" font-weight="700" text-anchor="start">STDLIB</text>

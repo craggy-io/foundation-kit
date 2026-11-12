@@ -64,7 +64,7 @@ A kind describes a type of definition. It isn't a general type system:
 | --- | --- |
 | A `classification-services` definition module | Yes |
 | A `data-services` source declaration | Yes |
-| A content type such as `archive.zip` | No, it's data inside a definition |
+| A content type such as `archive.zip` | No, it's a type, named in [`taxonomy`](../taxonomy/README.md) |
 | A record field type such as `data.Field` | No, it's part of a source declaration |
 
 ## Implementation status

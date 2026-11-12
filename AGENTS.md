@@ -16,6 +16,7 @@ This kit is early, so check before relying on anything:
 | Need | Package |
 | --- | --- |
 | Declare a kind, a schema or a built-in | [`kind`](kind/README.md) |
+| Name a type, say what it is a kind of, or ask whether one type is another | [`taxonomy`](taxonomy/README.md) |
 | Load bundles and built-ins, read the catalog | [`bundle`](bundle/README.md) |
 | Reload, install or uninstall bundles at run time | `bundle.Live` |
 | Compile a single-file contribution | `bundle/compile` |
@@ -37,7 +38,7 @@ Imports point down only. A package's directory doesn't decide its layer, so `bun
 | --- | --- | --- | --- |
 | Extensions | `bundle/compile`, `kind/jsonschema`, `adapters/sqlite` (own module) | Engines, contracts, own dependencies | Import another extension, or be imported by an engine |
 | Engines | `bundle`, `settings`, `fsx`, `canonjson`, `retryafter`, `feed` | Contracts, small dependencies hidden in `internal/` | Import another engine without an ADR, or expose a third-party type in its API |
-| Contracts | `kind` | Standard library only | Do I/O, or import any other kit package |
+| Contracts | `kind`, `taxonomy` | Standard library only | Do I/O, or import any other kit package |
 | Test support | `bundle/bundletest`, `archtest` | Any layer, plus `testing` | Be imported by non-test code |
 | Shared internal | `internal/...` at the module root | Standard library, small dependencies, other `internal/` packages | Import any other kit package, be imported by a contract, or have its types exposed by an importer ([ADR-0003](docs/decisions/ADR-0003-repository-rules-and-shared-internal.md)) |
 
@@ -51,7 +52,7 @@ Add something to the kit only if all of these are true:
 
 1. **It's generic.** It works unchanged in both an APK research tool and a game's quest pipeline, and needs no product word such as "lab" or "APK".
 2. **It has a real consumer.** Something needs it now, and a second independent use is known or expected. Don't add speculative packages.
-3. **No existing library owns it.** Starlark belongs in `script-services`, callable operations in `capability-services`, content types such as `archive.zip` in `classification-services`.
+3. **No existing library owns it.** Starlark belongs in `script-services`, callable operations in `capability-services`, recognising content as a type such as `archive.zip` in `classification-services`. Type names and how they relate are the exception: they live here, in `taxonomy`, so that every library shares one graph ([ADR-0004](docs/decisions/ADR-0004-shared-taxonomy.md)).
 
 If not, put it in the consumer. Kinds and compilers for a concept live with the library that owns that concept, never here.
 
@@ -78,6 +79,7 @@ If not, put it in the consumer. Kinds and compilers for a concept live with the 
 
 ## Building on the kit
 
+- **Types:** a host creates one `taxonomy.Live` and passes it to every library that declares or reads types. Declare a library's types under one owner ID, and keep what only that library knows about a type, such as how to recognise it, in the library, keyed by type name.
 - **Kinds:** declare each with `kind.New` next to the Go type it produces, written `namespace.name@N`. Change `N` when the meaning of the content changes.
 - **Manifests:** every bundle has a real `bundle.yaml`, in shipped content and test fixtures alike. Never generate one from a folder layout or file names, and never add a loader beside `bundle.Load`.
 - **Compilers:** use `bundle/compile` when a file maps straight onto a struct. A custom `Compiler` must have no side effects, must read only through `Contribution.Files`, `Contribution.Assets` and `Contribution.Dependency`, and must give the same result for the same inputs, because `Live` reuses compiled values.
