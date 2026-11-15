@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"path"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -24,6 +26,9 @@ const (
 	// AssetsDir is the directory at the bundle root that holds assets.
 	AssetsDir = "assets"
 )
+
+// ImageTypes are the extensions metadata.image may have.
+var ImageTypes = []string{".svg", ".png"}
 
 // Codes reported by this package. They match the codes declared in
 // bundle/diagnostic.go.
@@ -81,6 +86,9 @@ type Metadata struct {
 	ID      string `yaml:"id"`              // required; the bundle's identity
 	Version string `yaml:"version"`         // required; the author's release label
 	Title   string `yaml:"title,omitempty"` // optional
+	// Image is the bundle's display picture, shown across the top of its card: a
+	// path under assets/ ending in one of ImageTypes. Optional.
+	Image string `yaml:"image,omitempty"`
 }
 
 // Dependency declares another bundle that this one's contributions may reference.
@@ -298,6 +306,10 @@ func (p *parser) metadata(n *strictyaml.Node, md *Metadata) {
 		"id":      func(v *strictyaml.Node) { sawID = true; md.ID = p.str(v, "metadata.id") },
 		"version": func(v *strictyaml.Node) { sawVersion = true; md.Version = p.str(v, "metadata.version") },
 		"title":   func(v *strictyaml.Node) { md.Title = p.str(v, "metadata.title") },
+		"image": func(v *strictyaml.Node) {
+			md.Image = p.str(v, "metadata.image")
+			p.checkImage(v, md.Image)
+		},
 	})
 	if n.Kind != strictyaml.Mapping {
 		return
@@ -313,6 +325,20 @@ func (p *parser) metadata(n *strictyaml.Node, md *Metadata) {
 		p.at(n, codeInvalid, "", "metadata.version is required")
 	} else if md.Version == "" {
 		p.at(n, codeInvalid, "", "metadata.version must not be empty")
+	}
+}
+
+// checkImage reports a metadata.image that isn't an asset of an image type.
+func (p *parser) checkImage(n *strictyaml.Node, image string) {
+	switch {
+	case n.Kind != strictyaml.String:
+		// Already reported by str.
+	case !local(image):
+		p.at(n, codePathForbidden, "", fmt.Sprintf("metadata.image %q must be a slash-separated path inside the bundle", image))
+	case !inAssets(image):
+		p.at(n, codePathForbidden, "", fmt.Sprintf("metadata.image %q must be under %s/", image, AssetsDir))
+	case !slices.Contains(ImageTypes, strings.ToLower(path.Ext(image))):
+		p.at(n, codeInvalid, "", fmt.Sprintf("metadata.image %q must end in one of %s", image, strings.Join(ImageTypes, ", ")))
 	}
 }
 

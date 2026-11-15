@@ -85,6 +85,12 @@ JSON-compatible `trigger` value; a consuming application decides whether and
 how to use it. It must validate the fields it interprets. `metadata.title`
 continues to name the distribution; top-level `title` is its display title.
 
+`metadata.image` is the bundle's display picture, drawn across the top of
+its card wherever the bundle is shown: a path under `assets/` ending in
+`.svg` or `.png`. It counts as listed, so it needs no contribution to
+list it, and it reaches each definition as `Definition.Metadata.Image`, an
+`*Asset` (nil when the bundle has none).
+
 Bundle, dependency, provider, built-in and contribution IDs use letters, digits, `.`, `_` and `-`, and start and end with a letter or digit. String fields must be YAML strings, so quote a value such as `version: "1.0"` that YAML would read as a number.
 
 A definition is referred to as `owner-id#id`, where the owner is its bundle or provider, for example `example.android-research#audit`.

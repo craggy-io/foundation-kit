@@ -48,8 +48,11 @@ type loadedBundle struct {
 	defs     []compiledDefinition
 }
 
-func metadataOf(m *manifest.Manifest) Metadata {
+func metadataOf(m *manifest.Manifest, src Source, snap *snapshot.Snapshot) Metadata {
 	out := Metadata{Title: m.Title, Description: m.Description, Tags: slices.Clone(m.Tags)}
+	if info, ok := snap.Assets()[m.Metadata.Image]; ok {
+		out.Image = &Asset{source: src, path: m.Metadata.Image, size: info.Size, digest: info.Digest}
+	}
 	if m.Trigger != nil {
 		out.Trigger, _ = json.Marshal(m.Trigger) // Parse admits JSON-compatible values only.
 	}
@@ -204,7 +207,7 @@ func (l *loader) read(ctx context.Context, src Source) *loadedBundle {
 	}
 	b := &loadedBundle{
 		source:   src,
-		metadata: metadataOf(m),
+		metadata: metadataOf(m, src, snap),
 		identity: Identity{
 			ID:      label,
 			Version: m.Metadata.Version,
@@ -217,6 +220,14 @@ func (l *loader) read(ctx context.Context, src Source) *loadedBundle {
 
 	valid := len(manifestDiags) == 0
 	referenced := map[string]bool{}
+	if image := m.Metadata.Image; image != "" {
+		referenced[image] = true
+		if _, ok := snap.Assets()[image]; !ok {
+			l.add(Diagnostic{Code: CodeAssetMissing, Bundle: label, Path: manifest.FileName,
+				Message: fmt.Sprintf("metadata.image %s doesn't exist", image)})
+			valid = false
+		}
+	}
 	for _, c := range m.Entries() {
 		at := Diagnostic{Bundle: label, Contribution: c.ID, Path: manifest.FileName, Line: c.Line}
 		if c.Kind != "" {
@@ -250,7 +261,7 @@ func (l *loader) read(ctx context.Context, src Source) *loadedBundle {
 		for _, p := range sortedKeys(snap.Assets()) {
 			if !referenced[p] {
 				l.add(Diagnostic{Code: CodeAssetUnreferenced, Bundle: label, Path: p,
-					Message: fmt.Sprintf("%s is not listed by any contribution; list it under a contribution's assets, or remove it", p)})
+					Message: fmt.Sprintf("%s is not listed by any contribution or metadata.image; list it under a contribution's assets, or remove it", p)})
 				valid = false
 			}
 		}
@@ -487,6 +498,24 @@ func (l *loader) link(bundles []*loadedBundle, providers []loadedProvider, o Opt
 	return res
 }
 
+// bundleAssets is every asset a bundle lists, each once, sorted by path.
+func bundleAssets(b *loadedBundle) []Asset {
+	byPath := map[string]Asset{}
+	if image := b.metadata.Image; image != nil {
+		byPath[image.Path()] = *image
+	}
+	for _, def := range b.defs {
+		for _, a := range def.assets {
+			byPath[a.Path()] = a
+		}
+	}
+	out := make([]Asset, 0, len(byPath))
+	for _, p := range sortedKeys(byPath) {
+		out = append(out, byPath[p])
+	}
+	return out
+}
+
 // accept runs the Accept stage. Everything it receives has passed every check.
 func accept(bundles []*loadedBundle, providers []loadedProvider, o Options, res link.Result) *Catalog {
 	c := &Catalog{
@@ -497,6 +526,7 @@ func accept(bundles []*loadedBundle, providers []loadedProvider, o Options, res 
 		compiled:    map[compileKey]compiledValue{},
 		layers:      map[string]string{},
 		files:       map[string]fs.FS{},
+		assets:      map[string][]Asset{},
 	}
 	in := digest.CatalogInput{
 		BundleDigests: map[string]string{},
@@ -508,6 +538,7 @@ func accept(bundles []*loadedBundle, providers []loadedProvider, o Options, res 
 	for _, b := range bundles {
 		c.owners = append(c.owners, b.identity)
 		c.files[b.identity.ID] = b.snap.FS()
+		c.assets[b.identity.ID] = bundleAssets(b)
 		in.BundleDigests[b.identity.ID] = b.identity.Digest
 		for _, def := range b.defs {
 			c.definitions[def.ref] = storedDefinition{kind: def.kind.ID(), owner: b.identity, value: def.value, assets: def.assets, metadata: def.metadata}

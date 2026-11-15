@@ -156,3 +156,27 @@ func TestParseAllowsEmptyLists(t *testing.T) {
 		t.Errorf("diagnostics = %+v", diags)
 	}
 }
+
+func TestMetadataImage(t *testing.T) {
+	head := "apiVersion: craggy.io/bundle/v1\nmetadata: {id: example.card, version: 1.0.0, image: %s}\n"
+	for _, tc := range []struct {
+		image, code string
+	}{
+		{"assets/card.svg", ""},
+		{"assets/art/card.PNG", ""},
+		{"card.svg", codePathForbidden},
+		{"assets/../card.svg", codePathForbidden},
+		{"assets/card.jpg", codeInvalid},
+		{"[]", codeInvalid},
+	} {
+		m, diags := Parse([]byte(strings.Replace(head, "%s", tc.image, 1)))
+		switch {
+		case tc.code == "" && len(diags) != 0:
+			t.Errorf("image %s: diagnostics = %+v", tc.image, diags)
+		case tc.code == "" && m.Metadata.Image != tc.image:
+			t.Errorf("image %s: Image = %q", tc.image, m.Metadata.Image)
+		case tc.code != "" && (len(diags) != 1 || diags[0].Code != tc.code):
+			t.Errorf("image %s: diagnostics = %+v, want one %s", tc.image, diags, tc.code)
+		}
+	}
+}

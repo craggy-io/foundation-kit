@@ -17,6 +17,9 @@ type Metadata struct {
 	Description string
 	Tags        []string
 	Trigger     json.RawMessage
+	// Image is the bundle's display picture from metadata.image, an SVG or PNG
+	// under assets/, or nil when it has none.
+	Image *Asset
 }
 
 func (m Metadata) clone() Metadata {
@@ -57,7 +60,8 @@ type Catalog struct {
 	layers      map[string]string          // Options.BundleOverrides, target owner to replacement owner
 	global      map[kind.ID]map[string]Ref // effective definitions of global kinds, by contribution ID
 	compiled    map[compileKey]compiledValue
-	files       map[string]fs.FS // each bundle's snapshot, by owner ID
+	files       map[string]fs.FS   // each bundle's snapshot, by owner ID
+	assets      map[string][]Asset // each bundle's assets, by owner ID, sorted by path
 }
 
 // storedDefinition is a Definition with its type erased. Only Get reads the value.
@@ -147,7 +151,7 @@ func (c *Catalog) Digest() string { return c.digest }
 
 // Files returns the accepted files of the bundle with the given owner ID: its
 // manifest, contributions and support files, exactly as Load read and hashed
-// them. Assets aren't included, so read those through a definition's Assets. It
+// them. Assets aren't included, so read those through Assets. It
 // reports false for a provider, which has no files, and for an unknown owner.
 //
 // Use it for work that needs a bundle's files after Load has returned, such as
@@ -157,6 +161,15 @@ func (c *Catalog) Digest() string { return c.digest }
 func (c *Catalog) Files(owner string) (fs.FS, bool) {
 	files, ok := c.files[owner]
 	return files, ok
+}
+
+// Assets returns every asset of the bundle with the given owner ID: those its
+// contributions list and its metadata.image, each once, sorted by path. With
+// Files it is the whole bundle, as Load accepted it. It reports false for a
+// provider and for an unknown owner.
+func (c *Catalog) Assets(owner string) ([]Asset, bool) {
+	assets, ok := c.assets[owner]
+	return slices.Clone(assets), ok
 }
 
 // Owners returns the identity of every accepted bundle and provider, sorted by ID.

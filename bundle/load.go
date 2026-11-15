@@ -84,8 +84,8 @@ type BundleOverride struct {
 //     ID().Validate (CodeKindInvalid). Parse each contribution's kind with
 //     kind.ParseID (CodeKindInvalid), then check that it has a compiler
 //     (CodeKindUnknown). Check that each listed asset exists (CodeAssetMissing) and
-//     that each file under assets/ is listed by a contribution
-//     (CodeAssetUnreferenced).
+//     that each file under assets/ is listed by a contribution or is the
+//     bundle's metadata.image (CodeAssetUnreferenced).
 //  4. Compile: call each contribution's Compiler.
 //  5. Check: call Kind.Validate on every compiled value and built-in, so that schemas
 //     apply however a definition was supplied (CodeSchemaInvalid).

@@ -484,3 +484,31 @@ func merge(maps ...fstest.MapFS) fstest.MapFS {
 	}
 	return out
 }
+
+func TestMetadataImageIsAnAsset(t *testing.T) {
+	files := hello()
+	files["bundle.yaml"].Data = []byte(strings.Replace(string(files["bundle.yaml"].Data),
+		"version: 0.1.0}", "version: 0.1.0, image: assets/card.svg}", 1))
+	files["assets/card.svg"] = &fstest.MapFile{Data: []byte("<svg/>")}
+	c, err := load(t, bundle.Options{Sources: []bundle.Source{bundle.Embedded("mem", files)},
+		Compilers: []bundle.AnyCompiler{bundle.Compile(greeting, compile.Text())}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	def, _ := bundle.Get(c, greeting, bundle.Ref{Owner: "example.hello", ID: "hello"})
+	if def.Metadata.Image == nil || def.Metadata.Image.Path() != "assets/card.svg" {
+		t.Fatalf("Image = %+v", def.Metadata.Image)
+	}
+	if data, err := def.Metadata.Image.Read(context.Background()); err != nil || string(data) != "<svg/>" {
+		t.Fatalf("Read = %q, %v", data, err)
+	}
+	// Assets is the whole bundle's: the picture with what contributions list.
+	if all, ok := c.Assets("example.hello"); !ok || len(all) != 1 || all[0].Path() != "assets/card.svg" {
+		t.Fatalf("Assets = %+v, %v", all, ok)
+	}
+
+	delete(files, "assets/card.svg")
+	_, err = load(t, bundle.Options{Sources: []bundle.Source{bundle.Embedded("mem", files)},
+		Compilers: []bundle.AnyCompiler{bundle.Compile(greeting, compile.Text())}})
+	bundletest.RequireCode(t, err, bundle.CodeAssetMissing)
+}
