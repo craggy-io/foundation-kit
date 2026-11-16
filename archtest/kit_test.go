@@ -9,8 +9,8 @@ import (
 // The layers of this kit, as described in AGENTS.md. Add every new package here.
 // adapters/sqlite is a nested Go module with its own archtest.Check in its arch_test.go.
 var (
-	contracts   = []string{"./kind", "./taxonomy"}
-	engines     = []string{"./bundle", "./bundle/internal/...", "./settings", "./canonjson", "./fsx", "./retryafter", "./feed", "./statemachine"}
+	contracts   = []string{"./kind", "./taxonomy", "./event"}
+	engines     = []string{"./trigger", "./bundle", "./bundle/internal/...", "./settings", "./canonjson", "./fsx", "./retryafter", "./feed", "./statemachine"}
 	stdOnly     = []string{"./canonjson", "./fsx", "./retryafter", "./feed", "./statemachine"}
 	extensions  = []string{"./bundle/compile", "./kind/jsonschema"}
 	testSupport = []string{"./archtest", "./archtest/internal/...", "./bundle/bundletest"}

@@ -16,6 +16,8 @@ This kit is early, so check before relying on anything:
 | Need | Package |
 | --- | --- |
 | Declare a kind, a schema or a built-in | [`kind`](kind/README.md) |
+| Exchange a structured fact | [`event`](event/README.md) |
+| Match facts, map inputs, schedule and durably admit work | [`trigger`](trigger/README.md) |
 | Name a type, say what it is a kind of, or ask whether one type is another | [`taxonomy`](taxonomy/README.md) |
 | Load bundles and built-ins, read the catalog | [`bundle`](bundle/README.md) |
 | Reload, install or uninstall bundles at run time | `bundle.Live` |
@@ -38,8 +40,8 @@ Imports point down only. A package's directory doesn't decide its layer, so `bun
 | Layer | Packages | May import | Must not |
 | --- | --- | --- | --- |
 | Extensions | `bundle/compile`, `kind/jsonschema`, `adapters/sqlite` (own module) | Engines, contracts, own dependencies | Import another extension, or be imported by an engine |
-| Engines | `bundle`, `settings`, `fsx`, `canonjson`, `retryafter`, `feed`, `statemachine` | Contracts, small dependencies hidden in `internal/` | Import another engine without an ADR, or expose a third-party type in its API |
-| Contracts | `kind`, `taxonomy` | Standard library only | Do I/O, or import any other kit package |
+| Engines | `bundle`, `settings`, `fsx`, `canonjson`, `retryafter`, `feed`, `statemachine`, `trigger` | Contracts, small dependencies hidden in `internal/` | Import another engine without an ADR, or expose a third-party type in its API |
+| Contracts | `kind`, `taxonomy`, `event` | Standard library only | Do I/O, or import any other kit package |
 | Test support | `bundle/bundletest`, `archtest` | Any layer, plus `testing` | Be imported by non-test code |
 | Shared internal | `internal/...` at the module root | Standard library, small dependencies, other `internal/` packages | Import any other kit package, be imported by a contract, or have its types exposed by an importer ([ADR-0003](docs/decisions/ADR-0003-repository-rules-and-shared-internal.md)) |
 
@@ -105,3 +107,5 @@ go build ./... && go vet ./... && go test ./...
 (cd adapters/sqlite && go vet ./... && go test ./...)
 gofmt -l .    # must print nothing
 ```
+
+Structured events live in [`event`](event/README.md); matching, schedules and durable admissions live in [`trigger`](trigger/README.md). See [ADR-0005](docs/decisions/ADR-0005-event-admission.md).

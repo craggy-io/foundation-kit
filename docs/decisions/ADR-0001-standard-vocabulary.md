@@ -221,3 +221,7 @@ Terms are adopted only when code uses them or a collision needs preventing. This
 2. [ ] Rename or rethink the planned `registry` package, because this ADR reserves that word for capabilities.
 3. [ ] Decide whether the planned `lifecycle.Service` keeps `Start` and `Stop` or moves to `Run` and `Close`.
 4. [x] Point `AGENTS.md` at this ADR.
+
+## Events and triggers
+
+An **event** is a versioned fact with publisher-established identity and host-established scope. A **binding** associates a trigger specification with an opaque execution target. An **admission** is the durable decision to execute that target with pinned event, mapped input and revision. An **attempt** is an explicitly numbered execution of an admission.

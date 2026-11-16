@@ -11,6 +11,9 @@ import (
 // Everything is listed explicitly. Load does not scan for bundles or find kinds
 // through init-time registration.
 type Options struct {
+	// Validators check cross-definition contracts after linking, before a catalog
+	// becomes visible. They must be pure and must never start runtime services.
+	Validators []func(*Catalog) []Diagnostic
 	// Sources lists the selected bundles. Each Source supplies exactly one bundle.
 	// Their order has no effect on the result.
 	Sources []Source
@@ -143,5 +146,12 @@ func load(ctx context.Context, o Options, prev *Catalog) (*Catalog, error) {
 	if l.failed() {
 		return nil, l.loadError()
 	}
-	return accept(bundles, providers, o, res), nil
+	cat := accept(bundles, providers, o, res)
+	for _, validate := range o.Validators {
+		l.diags = append(l.diags, validate(cat)...)
+	}
+	if l.failed() {
+		return nil, l.loadError()
+	}
+	return cat, nil
 }
