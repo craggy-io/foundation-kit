@@ -89,10 +89,15 @@ type Reader struct {
 	HTTP   *http.Client
 	Now    func() time.Time
 
-	// The last head fetched, so an unchanged head costs a 304.
-	etag string
-	head []byte
+	// The last head fetched, so an unchanged head costs a 304, and the
+	// segments read, which never change.
+	etag     string
+	head     []byte
+	segments map[string][]Record
 }
+
+// maxCachedSegments bounds the segments a Reader keeps decoded.
+const maxCachedSegments = 32
 
 func (r *Reader) now() time.Time {
 	if r.Now != nil {
@@ -112,15 +117,7 @@ func (r *Reader) client() *http.Client {
 // Unreachable logs are ErrUnavailable; anything that fails a check is
 // ErrUntrusted, and the cursor should be kept as it was.
 func (r *Reader) Next(ctx context.Context, cur Cursor) (Batch, error) {
-	base, err := r.base()
-	if err != nil {
-		return Batch{}, err
-	}
-	data, err := r.fetchHead(ctx, base)
-	if err != nil {
-		return Batch{}, err
-	}
-	head, err := VerifyHead(data, r.Roots, r.now())
+	base, head, err := r.verifiedHead(ctx)
 	if err != nil {
 		return Batch{}, err
 	}
@@ -137,11 +134,7 @@ func (r *Reader) Next(ctx context.Context, cur Cursor) (Batch, error) {
 		if ref.Last <= cur.Seq {
 			continue
 		}
-		data, err := r.fetch(ctx, base, ref.Name, ref.Bytes)
-		if err != nil {
-			return Batch{}, err
-		}
-		rs, err := decodeSegment(data, ref)
+		rs, err := r.segment(ctx, base, ref)
 		if err != nil {
 			return Batch{}, err
 		}
@@ -152,6 +145,65 @@ func (r *Reader) Next(ctx context.Context, cur Cursor) (Batch, error) {
 		}
 	}
 	return Batch{Cursor: next, Records: records}, nil
+}
+
+// Tail returns up to n of the newest records the filter matches, oldest
+// first, and the cursor at the head they were read from: for showing recent
+// history, such as after a restart. Records the log no longer holds are not
+// in it; the latest files are, through Next.
+func (r *Reader) Tail(ctx context.Context, n int) ([]Record, Cursor, error) {
+	base, head, err := r.verifiedHead(ctx)
+	if err != nil {
+		return nil, Cursor{}, err
+	}
+	var newest []Record // newest first
+	for i := len(head.Segments) - 1; i >= 0 && len(newest) < n; i-- {
+		rs, err := r.segment(ctx, base, head.Segments[i])
+		if err != nil {
+			return nil, Cursor{}, err
+		}
+		for j := len(rs) - 1; j >= 0 && len(newest) < n; j-- {
+			if r.Filter.Matches(rs[j].Event) {
+				newest = append(newest, rs[j])
+			}
+		}
+	}
+	slices.Reverse(newest)
+	return newest, Cursor{Revision: head.Revision, Seq: head.Last}, nil
+}
+
+// verifiedHead fetches and checks the head.
+func (r *Reader) verifiedHead(ctx context.Context) (*url.URL, Head, error) {
+	base, err := r.base()
+	if err != nil {
+		return nil, Head{}, err
+	}
+	data, err := r.fetchHead(ctx, base)
+	if err != nil {
+		return nil, Head{}, err
+	}
+	head, err := VerifyHead(data, r.Roots, r.now())
+	return base, head, err
+}
+
+// segment reads one segment the head lists, once: segments never change.
+func (r *Reader) segment(ctx context.Context, base *url.URL, ref SegmentRef) ([]Record, error) {
+	if rs, ok := r.segments[ref.Digest]; ok {
+		return rs, nil
+	}
+	data, err := r.fetch(ctx, base, ref.Name, ref.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	rs, err := decodeSegment(data, ref)
+	if err != nil {
+		return nil, err
+	}
+	if r.segments == nil || len(r.segments) >= maxCachedSegments {
+		r.segments = map[string][]Record{}
+	}
+	r.segments[ref.Digest] = rs
+	return rs, nil
 }
 
 func (r *Reader) latest(ctx context.Context, base *url.URL, head Head) ([]Record, error) {

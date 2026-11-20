@@ -17,7 +17,8 @@ Add `eventlog`, an engine in which:
 - **The writer owns a `Store` with generation preconditions.** It writes the head last, conditional on the generation it read, so two writers never both succeed. Every other object is named after its content, so a failed write changes nothing that is published.
 - **Size is bounded twice.** Segments are dropped by age (`Retain`) and merged by count (`MaxSegments`). Latest files are bounded by the number of subjects. Data per envelope is capped at `MaxDataBytes`. A reader whose cursor is older than the log gets a reset with the latest files, as `feed` does.
 - **Records announce changes; they never carry the new state.** Readers fetch that from its owner.
-- **It imports only the standard library and `event`.** Filtering by type prefix and subject is built in. Anything richer, such as `trigger` specs or `taxonomy` checks, comes in through `Filter.Match`, so the engine needs no other engine.
+- **Following is built in.** A `Follower` polls a `Reader` on a timer with jitter and backoff, hands each batch to the host, and saves the cursor (a `FileCursor`) only after the host has handled it. `Reader.Tail` gives the newest records for showing history.
+- **It imports only the standard library, `event`, and `fsx`.** `fsx` writes the cursor file atomically; this is the one engine-to-engine dependency, approved here. Filtering by type prefix and subject is built in. Anything richer, such as `trigger` specs or `taxonomy` checks, comes in through `Filter.Match`, so matching needs no other engine.
 
 Hosts own everything Craggy-specific: where events come from, who may publish which types, the schemas of their data, the bucket, and the signing key (in a key-management service, through `Signer`).
 

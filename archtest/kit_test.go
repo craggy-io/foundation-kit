@@ -53,11 +53,11 @@ func TestKitLayers(t *testing.T) {
 				Forbid: []string{"./...", archtest.External},
 			},
 			{
-				Name:   "eventlog uses only the event contract",
-				Why:    "readers such as the harness take eventlog for one HTTP log, so it adds nothing beyond the standard library and event (ADR-0006)",
+				Name:   "eventlog uses only event and fsx",
+				Why:    "readers such as the harness take eventlog to follow one HTTP log, so it adds nothing beyond the standard library, event, and fsx for its cursor file (ADR-0006)",
 				From:   []string{"./eventlog"},
 				Forbid: []string{"./...", archtest.External},
-				Allow:  []string{"./event"},
+				Allow:  []string{"./event", "./fsx"},
 			},
 			{
 				Name:   "bundle doesn't use settings",

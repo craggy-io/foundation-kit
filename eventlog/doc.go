@@ -44,8 +44,11 @@
 // has read. Several processes may share a log; the store's preconditions keep
 // writers apart. Readers only ever read.
 //
+// A Follower polls a Reader on a timer and saves the cursor (in a FileCursor)
+// after its handler accepts each batch. Reader.Tail returns the newest records.
+//
 // Exported names: Record, Head, SegmentRef, LatestRef, Latest, Cursor, Batch,
-// Filter, Store, WriteOptions, AnyGeneration, Writer, Result, Reader, Signer,
+// Filter, Follower, Status, CursorStore, FileCursor, Store, WriteOptions, AnyGeneration, Writer, Result, Reader, Signer,
 // Key, Signature, PrivateKey, GenerateKey, ParseRoots, VerifyHead, HeadName,
 // Namespace, TypeName, ErrUntrusted, ErrUnavailable, ErrConflict,
 // MaxDataBytes.
