@@ -70,7 +70,7 @@ func TestFollowerSavesTheCursorOnlyAfterHandling(t *testing.T) {
 func TestFollowerRunPollsOnPoke(t *testing.T) {
 	e := newEnv(t)
 	got := make(chan eventlog.Batch, 4)
-	f := &eventlog.Follower{Reader: e.reader, Every: time.Hour, Handle: func(_ context.Context, b eventlog.Batch) error {
+	f := &eventlog.Follower{Reader: e.reader, Every: time.Hour, MinEvery: time.Millisecond, Handle: func(_ context.Context, b eventlog.Batch) error {
 		got <- b
 		return nil
 	}}
@@ -93,6 +93,33 @@ func TestFollowerRunPollsOnPoke(t *testing.T) {
 	}
 	if next := f.Status().Next; next.Before(time.Now().Add(50 * time.Minute)) {
 		t.Fatalf("next poll at %s, want about an hour away", next)
+	}
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run = %v", err)
+	}
+}
+
+func TestFollowerNeverPollsSoonerThanMinEvery(t *testing.T) {
+	e := newEnv(t)
+	const gap = 300 * time.Millisecond
+	polls := make(chan time.Time, 16)
+	f := &eventlog.Follower{Reader: e.reader, Every: time.Millisecond, MinEvery: gap, Handle: func(context.Context, eventlog.Batch) error {
+		polls <- time.Now()
+		return nil
+	}}
+	e.append(ev("a", "market.bundle.published@1", "b", `{}`))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- f.Run(ctx) }()
+	last := <-polls
+	for range 3 {
+		f.Poke() // a poke straight after a poll waits for the gap
+		next := <-polls
+		if d := next.Sub(last); d < gap-10*time.Millisecond {
+			t.Fatalf("polls %s apart, want at least %s", d, gap)
+		}
+		last = next
 	}
 	cancel()
 	if err := <-done; !errors.Is(err, context.Canceled) {

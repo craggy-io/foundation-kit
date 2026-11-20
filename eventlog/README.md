@@ -29,7 +29,7 @@ A record announces that something changed. When a reader needs the new data, it 
 
 ## Following
 
-A `Follower` runs the reader for you. It polls on a timer, keeps the cursor in a file, and passes each batch to your handler. The cursor moves only after the handler succeeds, so a failed batch comes round again.
+A `Follower` runs the reader for you. It polls on a timer, keeps the cursor in a file, and passes each batch to your handler. The cursor moves only after the handler succeeds, so a failed batch comes round again. Run never polls twice within `MinEvery` (default 30 seconds, the head's cache time), whatever `Every` says and however often `Poke` is called, so a misconfigured or button-mashed reader can't hammer a public log.
 
 ```go
 f := &eventlog.Follower{
@@ -39,7 +39,7 @@ f := &eventlog.Follower{
     Handle: func(ctx context.Context, b eventlog.Batch) error { ...; return nil },
 }
 go f.Run(ctx)   // polls now, then on the timer, until ctx ends
-f.Poke()        // poll now
+f.Poke()        // poll now, or once MinEvery has passed since the last poll
 f.Status()      // last poll, last error, cursor, records seen: for a status line
 recent, _, err := r.Tail(ctx, 100) // the newest 100 matching records, for history after a restart
 ```
@@ -59,5 +59,6 @@ result, err := w.Append(ctx, envelopes) // call at least once a day, even with n
 - [x] Writer: append, deduplication by envelope ID, latest files, retention, compaction, conditional head writes
 - [x] Reader: cursors, reset to the latest files, filters, `304` reuse, download limits
 - [x] Follower: timer, jitter, backoff, poke, status, cursor saved after handling (`FileCursor`); `Reader.Tail` and a segment cache
+- [x] Follower: `MinEvery` floor between polls, pokes included
 - [x] `eventlogtest`: an in-memory store that serves itself over HTTP, and fixed test keys
 - [ ] Store adapters live with their hosts (craggy-event-stream has GCS); none are in the kit

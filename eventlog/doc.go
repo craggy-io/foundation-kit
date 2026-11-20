@@ -45,7 +45,8 @@
 // writers apart. Readers only ever read.
 //
 // A Follower polls a Reader on a timer and saves the cursor (in a FileCursor)
-// after its handler accepts each batch. Reader.Tail returns the newest records.
+// after its handler accepts each batch, never polling twice within MinEvery.
+// Reader.Tail returns the newest records.
 //
 // Exported names: Record, Head, SegmentRef, LatestRef, Latest, Cursor, Batch,
 // Filter, Follower, Status, CursorStore, FileCursor, Store, WriteOptions, AnyVersion, Writer, Result, Reader, Signer,

@@ -59,6 +59,9 @@ func (m *memoryCursor) Save(c Cursor) error   { m.c = c; return nil }
 const (
 	defaultEvery      = 2 * time.Minute
 	defaultMaxBackoff = 30 * time.Minute
+	// defaultMinEvery matches the head's cache time: polling more often reads
+	// the same head, and a public log is rate-limited per client.
+	defaultMinEvery = 30 * time.Second
 )
 
 // Follower polls a log on a timer and hands each batch to Handle, saving the
@@ -72,6 +75,10 @@ type Follower struct {
 	// Every is the time between polls (default 2 minutes). A random extra of
 	// up to a fifth of it spreads many readers over time.
 	Every time.Duration
+	// MinEvery is the least time between two polls Run makes, however Every
+	// is set and however often Poke is called (default 30 seconds, the head's
+	// cache time). Lower it only in tests.
+	MinEvery time.Duration
 	// MaxBackoff caps the wait after failures, which doubles from Every
 	// (default 30 minutes).
 	MaxBackoff time.Duration
@@ -124,7 +131,8 @@ func (f *Follower) update(change func(*Status)) {
 	change(&f.status)
 }
 
-// Poke asks Run to poll now instead of waiting for its timer.
+// Poke asks Run to poll now instead of waiting for its timer, or as soon as
+// MinEvery has passed since its last poll.
 func (f *Follower) Poke() {
 	f.init()
 	select {
@@ -180,22 +188,42 @@ func (f *Follower) poll(ctx context.Context) (Batch, error) {
 // Run polls now and then on its timer until ctx ends, which it returns.
 func (f *Follower) Run(ctx context.Context) error {
 	f.init()
-	every := or(f.Every, defaultEvery)
+	gap := or(f.MinEvery, defaultMinEvery)
+	every := max(or(f.Every, defaultEvery), gap)
 	for {
 		_, err := f.Poll(ctx)
+		polled := time.Now()
 		wait := every + rand.N(every/5+1)
 		if err != nil {
-			wait = min(every<<min(f.Status().Failures, 16), or(f.MaxBackoff, defaultMaxBackoff))
+			wait = min(every<<min(f.Status().Failures, 16), max(or(f.MaxBackoff, defaultMaxBackoff), every))
 		}
-		f.update(func(s *Status) { s.Next = time.Now().Add(wait) })
-		timer := time.NewTimer(wait)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
-		case <-f.poke:
-			timer.Stop()
-		case <-timer.C:
+		if err := f.sleep(ctx, wait, true); err != nil {
+			return err
+		}
+		// Poked, or the timer ran out: either way, not sooner than gap.
+		if err := f.sleep(ctx, gap-time.Since(polled), false); err != nil {
+			return err
 		}
 	}
+}
+
+// sleep waits d, or until ctx ends, or, when pokeable, until Poke is called.
+func (f *Follower) sleep(ctx context.Context, d time.Duration, pokeable bool) error {
+	if d <= 0 {
+		return nil
+	}
+	f.update(func(s *Status) { s.Next = time.Now().Add(d) })
+	var poke chan struct{}
+	if pokeable {
+		poke = f.poke
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-poke:
+	case <-timer.C:
+	}
+	return nil
 }
