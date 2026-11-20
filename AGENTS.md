@@ -30,6 +30,7 @@ This kit is early, so check before relying on anything:
 | Hash JSON so equal values match | [`canonjson`](canonjson/README.md) |
 | Honour a server's `Retry-After` | [`retryafter`](retryafter/README.md) |
 | Announce changes to readers with their own cursor | [`feed`](feed/README.md) |
+| Publish events as a signed static log, or follow and filter one over HTTP | [`eventlog`](eventlog/README.md) |
 | Declare states and transitions, check them, and move a state through them | [`statemachine`](statemachine/README.md) |
 | Open and migrate a SQLite database | [`adapters/sqlite`](adapters/sqlite/README.md) |
 
@@ -40,9 +41,9 @@ Imports point down only. A package's directory doesn't decide its layer, so `bun
 | Layer | Packages | May import | Must not |
 | --- | --- | --- | --- |
 | Extensions | `bundle/compile`, `kind/jsonschema`, `adapters/sqlite` (own module) | Engines, contracts, own dependencies | Import another extension, or be imported by an engine |
-| Engines | `bundle`, `settings`, `fsx`, `canonjson`, `retryafter`, `feed`, `statemachine`, `trigger` | Contracts, small dependencies hidden in `internal/` | Import another engine without an ADR, or expose a third-party type in its API |
+| Engines | `bundle`, `settings`, `fsx`, `canonjson`, `retryafter`, `feed`, `statemachine`, `trigger`, `eventlog` | Contracts, small dependencies hidden in `internal/` | Import another engine without an ADR, or expose a third-party type in its API |
 | Contracts | `kind`, `taxonomy`, `event` | Standard library only | Do I/O, or import any other kit package |
-| Test support | `bundle/bundletest`, `archtest` | Any layer, plus `testing` | Be imported by non-test code |
+| Test support | `bundle/bundletest`, `eventlog/eventlogtest`, `archtest` | Any layer, plus `testing` | Be imported by non-test code |
 | Shared internal | `internal/...` at the module root | Standard library, small dependencies, other `internal/` packages | Import any other kit package, be imported by a contract, or have its types exposed by an importer ([ADR-0003](docs/decisions/ADR-0003-repository-rules-and-shared-internal.md)) |
 
 - **`internal/`:** belongs to its parent package, and has the same layer and limits. The exception is the module-root `internal/`, which several layers share under the row above.

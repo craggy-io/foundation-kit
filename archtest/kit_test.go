@@ -10,10 +10,10 @@ import (
 // adapters/sqlite is a nested Go module with its own archtest.Check in its arch_test.go.
 var (
 	contracts   = []string{"./kind", "./taxonomy", "./event"}
-	engines     = []string{"./trigger", "./bundle", "./bundle/internal/...", "./settings", "./canonjson", "./fsx", "./retryafter", "./feed", "./statemachine"}
+	engines     = []string{"./trigger", "./bundle", "./bundle/internal/...", "./settings", "./canonjson", "./fsx", "./retryafter", "./feed", "./statemachine", "./eventlog"}
 	stdOnly     = []string{"./canonjson", "./fsx", "./retryafter", "./feed", "./statemachine"}
 	extensions  = []string{"./bundle/compile", "./kind/jsonschema"}
-	testSupport = []string{"./archtest", "./archtest/internal/...", "./bundle/bundletest"}
+	testSupport = []string{"./archtest", "./archtest/internal/...", "./bundle/bundletest", "./eventlog/eventlogtest"}
 	shared      = []string{"./internal/..."} // module-root internal/, decided by ADR-0003
 )
 
@@ -51,6 +51,13 @@ func TestKitLayers(t *testing.T) {
 				Why:    "canonjson, fsx, retryafter, feed and statemachine use nothing else, so any module can take them without pulling in anything else",
 				From:   stdOnly,
 				Forbid: []string{"./...", archtest.External},
+			},
+			{
+				Name:   "eventlog uses only the event contract",
+				Why:    "readers such as the harness take eventlog for one HTTP log, so it adds nothing beyond the standard library and event (ADR-0006)",
+				From:   []string{"./eventlog"},
+				Forbid: []string{"./...", archtest.External},
+				Allow:  []string{"./event"},
 			},
 			{
 				Name:   "bundle doesn't use settings",

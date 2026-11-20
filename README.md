@@ -96,9 +96,11 @@ Nothing in the kit knows about any product. If a package needs a word like "lab"
 | [`canonjson`](canonjson/README.md) | Engines | One canonical byte form of JSON, for hashing | Working, consumers not migrated yet |
 | [`retryafter`](retryafter/README.md) | Engines | Reads the HTTP `Retry-After` header | Working, consumers not migrated yet |
 | [`feed`](feed/README.md) | Engines | Ordered change feed with per-reader cursors and backlog replay | Working; first consumer craggy-labs |
+| [`eventlog`](eventlog/README.md) | Engines | Signed, append-only event log published as static files, with a cursor-following reader and filters | Working; first consumers craggy-event-stream (writer) and craggy-harness (reader) |
 | [`statemachine`](statemachine/README.md) | Engines | Finite state machines over a consumer's own states and events, checked for consistency before they run | Working, no consumers yet |
 | [`adapters/sqlite`](adapters/sqlite/README.md) | Extensions, own Go module | Opens SQLite with safe settings, and migrates schemas by version | Working, consumers not migrated yet |
 | `bundle/bundletest` | Test support | Helpers for testing kinds, compilers and bundles | Working |
+| `eventlog/eventlogtest` | Test support | In-memory event log store served over HTTP, and fixed keys | Working |
 | [`archtest`](archtest/README.md) | Test support | Turns repository rules into test failures: import boundaries, directory layout, README structure and JSON or YAML shapes, from Go or an `archtest.yaml` | Working |
 
 We also expect to add packages for lifecycle management, logging and an HTTP server. None of them exist yet, and each will be added once real applications need it.

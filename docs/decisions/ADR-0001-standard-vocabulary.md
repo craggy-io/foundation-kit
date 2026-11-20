@@ -225,3 +225,5 @@ Terms are adopted only when code uses them or a collision needs preventing. This
 ## Events and triggers
 
 An **event** is a versioned fact with publisher-established identity and host-established scope. A **binding** associates a trigger specification with an opaque execution target. An **admission** is the durable decision to execute that target with pinned event, mapped input and revision. An **attempt** is an explicitly numbered execution of an admission.
+
+An **event log** is an `eventlog` log: numbered **records** of events in immutable **segments**, a signed **head** that lists them, and **latest files** holding the newest record per type and subject in each namespace. A reader follows it with a **cursor**, and a **reset** is a batch of latest files given in place of records the log no longer holds ([ADR-0006](ADR-0006-signed-event-log.md)). A record is not a feed entry: a feed lives in one process's memory, while a log is published and outlives its writer.
