@@ -35,7 +35,7 @@
 //     objects no head lists, as long as the delay is longer than Retain.
 //   - Segments listed in a head are contiguous: together they hold every record
 //     from First to Last.
-//   - A Writer writes the head with the store generation it read, so two
+//   - A Writer writes the head with the store version it read, so two
 //     writers can never both succeed; the loser gets ErrConflict.
 //
 // # Concurrency
@@ -48,7 +48,7 @@
 // after its handler accepts each batch. Reader.Tail returns the newest records.
 //
 // Exported names: Record, Head, SegmentRef, LatestRef, Latest, Cursor, Batch,
-// Filter, Follower, Status, CursorStore, FileCursor, Store, WriteOptions, AnyGeneration, Writer, Result, Reader, Signer,
+// Filter, Follower, Status, CursorStore, FileCursor, Store, WriteOptions, AnyVersion, Writer, Result, Reader, Signer,
 // Key, Signature, PrivateKey, GenerateKey, ParseRoots, VerifyHead, HeadName,
 // Namespace, TypeName, ErrUntrusted, ErrUnavailable, ErrConflict,
 // MaxDataBytes.

@@ -37,9 +37,9 @@ func Signer(id string) eventlog.Signer {
 }
 
 type object struct {
-	data       []byte
-	generation int64
-	options    eventlog.WriteOptions
+	data    []byte
+	version string
+	options eventlog.WriteOptions
 }
 
 // MemStore is an eventlog.Store in memory, and an http.Handler that serves its
@@ -54,14 +54,14 @@ type MemStore struct {
 }
 
 // Read implements eventlog.Store.
-func (m *MemStore) Read(_ context.Context, name string) ([]byte, int64, error) {
+func (m *MemStore) Read(_ context.Context, name string) ([]byte, string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	o, ok := m.objects[name]
 	if !ok {
-		return nil, 0, fmt.Errorf("%s: %w", name, fs.ErrNotExist)
+		return nil, "", fmt.Errorf("%s: %w", name, fs.ErrNotExist)
 	}
-	return append([]byte(nil), o.data...), o.generation, nil
+	return append([]byte(nil), o.data...), o.version, nil
 }
 
 // Write implements eventlog.Store.
@@ -76,12 +76,12 @@ func (m *MemStore) Write(_ context.Context, name string, data []byte, o eventlog
 	if m.objects == nil {
 		m.objects = map[string]object{}
 	}
-	current := m.objects[name].generation
-	if o.IfGeneration != eventlog.AnyGeneration && o.IfGeneration != current {
-		return fmt.Errorf("%s is at generation %d, not %d: %w", name, current, o.IfGeneration, eventlog.ErrConflict)
+	current := m.objects[name].version
+	if o.IfVersion != eventlog.AnyVersion && o.IfVersion != current {
+		return fmt.Errorf("%s is at version %q, not %q: %w", name, current, o.IfVersion, eventlog.ErrConflict)
 	}
 	m.next++
-	m.objects[name] = object{data: append([]byte(nil), data...), generation: m.next, options: o}
+	m.objects[name] = object{data: append([]byte(nil), data...), version: strconv.FormatInt(m.next, 10), options: o}
 	return nil
 }
 
@@ -114,7 +114,7 @@ func (m *MemStore) Put(name string, data []byte) {
 	}
 	m.next++
 	o := m.objects[name]
-	o.data, o.generation = append([]byte(nil), data...), m.next
+	o.data, o.version = append([]byte(nil), data...), strconv.FormatInt(m.next, 10)
 	m.objects[name] = o
 }
 
@@ -131,7 +131,7 @@ func (m *MemStore) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	etag := `"` + strconv.FormatInt(o.generation, 10) + `"`
+	etag := `"` + o.version + `"`
 	w.Header().Set("ETag", etag)
 	if o.options.CacheControl != "" {
 		w.Header().Set("Cache-Control", o.options.CacheControl)

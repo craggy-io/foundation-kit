@@ -51,7 +51,7 @@ w := &eventlog.Writer{Store: bucket, Signer: kmsSigner}
 result, err := w.Append(ctx, envelopes) // call at least once a day, even with none
 ```
 
-`Append` validates every envelope and limits its data to `MaxDataBytes`. It skips any envelope whose ID the log already holds. Then it writes a segment and the touched namespaces' latest files, drops segments older than `Retain`, merges segments when there are more than `MaxSegments`, and writes the head last, conditional on the generation it read. If another writer gets there first, `Append` fails with `ErrConflict` and nothing it wrote is referenced. The store's own age-based deletion (a bucket lifecycle rule) can remove old objects, as long as it waits longer than `Retain`. Each head refresh renews the latest files, so they're never removed while in use.
+`Append` validates every envelope and limits its data to `MaxDataBytes`. It skips any envelope whose ID the log already holds. Then it writes a segment and the touched namespaces' latest files, drops segments older than `Retain`, merges segments when there are more than `MaxSegments`, and writes the head last, conditional on the version it read (a GCS generation, an S3 or R2 ETag). If another writer gets there first, `Append` fails with `ErrConflict` and nothing it wrote is referenced. The store's own age-based deletion (a bucket lifecycle rule) can remove old objects, as long as it waits longer than `Retain`. Each head refresh renews the latest files, so they're never removed while in use.
 
 ## Implementation status
 

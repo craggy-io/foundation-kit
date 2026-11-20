@@ -20,24 +20,25 @@ import (
 	"github.com/craggy-io/foundation-kit/event"
 )
 
-// AnyGeneration is a write that replaces whatever is there.
-const AnyGeneration int64 = -1
+// AnyVersion is a write that replaces whatever is there.
+const AnyVersion = "*"
 
 // Store is where a writer keeps a log's objects, by name relative to the log's
 // root. A bucket, a folder or memory.
 type Store interface {
-	// Read returns an object and its generation. A missing object is an error
-	// matching fs.ErrNotExist.
-	Read(ctx context.Context, name string) (data []byte, generation int64, err error)
-	// Write stores an object if its generation is o.IfGeneration: 0 means it
-	// must not exist, AnyGeneration means any. Otherwise it fails with an error
+	// Read returns an object and its version: a non-empty token the store
+	// changes whenever the object is written, such as a GCS generation or an
+	// S3 ETag. A missing object is an error matching fs.ErrNotExist.
+	Read(ctx context.Context, name string) (data []byte, version string, err error)
+	// Write stores an object if its version is o.IfVersion: "" means it must
+	// not exist, AnyVersion means any. Otherwise it fails with an error
 	// matching ErrConflict.
 	Write(ctx context.Context, name string, data []byte, o WriteOptions) error
 }
 
 // WriteOptions say how an object is written and served.
 type WriteOptions struct {
-	IfGeneration int64
+	IfVersion    string
 	ContentType  string
 	CacheControl string
 }
@@ -119,7 +120,7 @@ func (w *Writer) Append(ctx context.Context, events []event.Envelope) (Result, e
 		return Result{}, err
 	}
 	now := w.now()
-	head, generation, err := w.readHead(ctx)
+	head, version, err := w.readHead(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -157,7 +158,7 @@ func (w *Writer) Append(ctx context.Context, events []event.Envelope) (Result, e
 		}
 	}
 	ttl := or(w.HeadTTL, defaultHeadTTL)
-	stale := generation == 0 || head.Expires.Sub(now) < ttl/2
+	stale := version == "" || head.Expires.Sub(now) < ttl/2
 	if len(result.Added) == 0 && !dropped && !merged && !stale {
 		result.Head = head
 		return result, nil
@@ -182,7 +183,7 @@ func (w *Writer) Append(ctx context.Context, events []event.Envelope) (Result, e
 	if err != nil {
 		return Result{}, err
 	}
-	if err := w.Store.Write(ctx, HeadName, data, WriteOptions{IfGeneration: generation, ContentType: "application/json", CacheControl: mutableCache}); err != nil {
+	if err := w.Store.Write(ctx, HeadName, data, WriteOptions{IfVersion: version, ContentType: "application/json", CacheControl: mutableCache}); err != nil {
 		return Result{}, fmt.Errorf("eventlog: writing the head: %w", err)
 	}
 	result.Head, result.Wrote = head, true
@@ -205,16 +206,16 @@ func checkEvents(events []event.Envelope) error {
 	return nil
 }
 
-func (w *Writer) readHead(ctx context.Context) (Head, int64, error) {
-	data, generation, err := w.Store.Read(ctx, HeadName)
+func (w *Writer) readHead(ctx context.Context) (Head, string, error) {
+	data, version, err := w.Store.Read(ctx, HeadName)
 	if errors.Is(err, fs.ErrNotExist) {
-		return Head{Format: headFormat, First: 1}, 0, nil
+		return Head{Format: headFormat, First: 1}, "", nil
 	}
 	if err != nil {
-		return Head{}, 0, fmt.Errorf("eventlog: reading the head: %w", err)
+		return Head{}, "", fmt.Errorf("eventlog: reading the head: %w", err)
 	}
 	_, head, err := decodeHead(data)
-	return head, generation, err
+	return head, version, err
 }
 
 // recentIDs collects the envelope IDs of segments within the dedupe window,
@@ -259,7 +260,7 @@ func (w *Writer) writeSegment(ctx context.Context, records []Record) (SegmentRef
 	ref := SegmentRef{Name: segmentName(first, last, digest), First: first, Last: last, Count: len(records),
 		Newest: records[len(records)-1].Logged, Bytes: int64(len(data)), Digest: digest}
 	// Named after its content, so rewriting one is harmless.
-	if err := w.Store.Write(ctx, ref.Name, data, WriteOptions{IfGeneration: AnyGeneration, ContentType: "application/gzip", CacheControl: immutableCache}); err != nil {
+	if err := w.Store.Write(ctx, ref.Name, data, WriteOptions{IfVersion: AnyVersion, ContentType: "application/gzip", CacheControl: immutableCache}); err != nil {
 		return SegmentRef{}, fmt.Errorf("eventlog: writing %s: %w", ref.Name, err)
 	}
 	if w.ids != nil {
@@ -327,7 +328,7 @@ func (w *Writer) updateLatest(ctx context.Context, head *Head, records []Record)
 // writeLatest stores a latest file. It is named after its content, so writing
 // it again only renews its age in the store.
 func (w *Writer) writeLatest(ctx context.Context, name string, data []byte) error {
-	if err := w.Store.Write(ctx, name, data, WriteOptions{IfGeneration: AnyGeneration, ContentType: "application/json", CacheControl: immutableCache}); err != nil {
+	if err := w.Store.Write(ctx, name, data, WriteOptions{IfVersion: AnyVersion, ContentType: "application/json", CacheControl: immutableCache}); err != nil {
 		return fmt.Errorf("eventlog: writing %s: %w", name, err)
 	}
 	return nil
