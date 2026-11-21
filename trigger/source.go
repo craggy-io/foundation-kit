@@ -11,10 +11,12 @@ type Source struct {
 	Kind     string        `json:"kind"`
 	Interval time.Duration `json:"interval,omitempty"`
 	Expr     string        `json:"expr,omitempty"`
-	Root     string        `json:"root,omitempty"`
-	Glob     string        `json:"glob,omitempty"`
-	Upstream string        `json:"upstream,omitempty"`
-	Event    *Spec         `json:"event,omitempty"`
+	// TZ is the IANA zone a cron expression is read in; UTC when empty.
+	TZ       string `json:"tz,omitempty"`
+	Root     string `json:"root,omitempty"`
+	Glob     string `json:"glob,omitempty"`
+	Upstream string `json:"upstream,omitempty"`
+	Event    *Spec  `json:"event,omitempty"`
 }
 
 // Validate checks generic source semantics; domain grants remain the host's.
@@ -25,6 +27,9 @@ func (s Source) Validate() error {
 			return fmt.Errorf("every() needs a positive interval")
 		}
 	case "cron":
+		if _, err := s.location(); err != nil {
+			return err
+		}
 		_, err := ParseCron(s.Expr)
 		return err
 	case "watch":
@@ -55,9 +60,21 @@ func (s Source) Next(from time.Time) time.Time {
 			return from.Add(s.Interval)
 		}
 	case "cron":
-		if c, err := ParseCron(s.Expr); err == nil {
-			return c.Next(from)
+		loc, err := s.location()
+		if c, perr := ParseCron(s.Expr); err == nil && perr == nil {
+			return c.Next(from.In(loc))
 		}
 	}
 	return time.Time{}
+}
+
+func (s Source) location() (*time.Location, error) {
+	if s.TZ == "" {
+		return time.UTC, nil
+	}
+	loc, err := time.LoadLocation(s.TZ)
+	if err != nil {
+		return nil, fmt.Errorf("cron() zone %q: %w", s.TZ, err)
+	}
+	return loc, nil
 }

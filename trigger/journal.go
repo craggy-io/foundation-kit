@@ -373,7 +373,9 @@ func allowedTransition(from, to string, retry bool) bool {
 	switch from {
 	case "held":
 		return to == "ready"
-	case "ready", "interrupted":
+	case "ready":
+		return to == "running" || to == "failed" || to == "cancelled"
+	case "interrupted":
 		return to == "running" || to == "failed"
 	case "running", "waiting":
 		return to == "done" || to == "waiting" || to == "failed" || to == "cancelled" || to == "interrupted"

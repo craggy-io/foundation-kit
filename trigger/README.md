@@ -4,7 +4,7 @@ Construct a `Spec` with an event type, structured predicate, explicit input mapp
 
 Equality and business keys use `canonjson`, preserving exact integers and treating equivalent decimal forms equally. Event data is normalized with its 8 MiB and depth bounds.
 
-Filters support eq, ends_with, exists, all, any and not. Paths address envelope fields and data properties. Missing mapped fields fail admission visibly. Manual admissions are held until released; replay is opt-in. Clock sources support every and five-field UTC cron; missed occurrences coalesce. Source syntax also describes host-adapted watch, push and change sources.
+Filters support eq, ends_with, exists, all, any and not. Paths address envelope fields and data properties. Missing mapped fields fail admission visibly. Manual admissions are held until released; replay is opt-in. Clock sources support every and five-field cron, read in UTC or the IANA zone `tz` names; missed occurrences coalesce, and a host may skip a ready delivery (ready → cancelled). Source syntax also describes host-adapted watch, push and change sources.
 
 ## Implementation status
 

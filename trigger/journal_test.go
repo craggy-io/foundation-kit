@@ -118,3 +118,26 @@ func recoverAdmission(t *testing.T, j *trigger.Journal, path string, d trigger.D
 	}
 	return j
 }
+
+// A host may skip a ready delivery (a missed run it won't catch up on).
+func TestReadyCanBeSkipped(t *testing.T) {
+	j, err := trigger.Open(t.Context(), filepath.Join(t.TempDir(), "journal.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer j.Close()
+	spec := trigger.Spec{Event: "x.y@1"}
+	if err := j.Replace(t.Context(), []trigger.Binding{{ID: "b", Target: "t", Scope: "one", Spec: spec}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Publish(t.Context(), event.Envelope{ID: "e1", Type: "x.y@1", Source: "s", Scope: "one", Time: time.Now().UTC(), Data: json.RawMessage(`{}`)}); err != nil {
+		t.Fatal(err)
+	}
+	d := j.List("one")[0]
+	if err := j.Transition(t.Context(), "one", d.ID, "ready", "cancelled", "missed", false); err != nil {
+		t.Fatal(err)
+	}
+	if got := j.List("one")[0].Status; got != "cancelled" {
+		t.Fatalf("status %s", got)
+	}
+}

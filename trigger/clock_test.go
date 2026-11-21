@@ -41,3 +41,20 @@ func requireSuccess(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+// A cron source with a zone fires at its wall-clock time there, across a
+// change of offset.
+func TestCronInZone(t *testing.T) {
+	s := trigger.Source{Kind: "cron", Expr: "0 2 * * *", TZ: "Europe/London"}
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	winter := s.Next(time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC))
+	summer := s.Next(time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC))
+	if winter != time.Date(2026, 1, 11, 2, 0, 0, 0, time.UTC) || summer != time.Date(2026, 7, 11, 1, 0, 0, 0, time.UTC) {
+		t.Fatalf("winter %v, summer %v", winter, summer)
+	}
+	if (trigger.Source{Kind: "cron", Expr: "0 2 * * *", TZ: "Nowhere/City"}).Validate() == nil {
+		t.Fatal("an unknown zone was taken")
+	}
+}

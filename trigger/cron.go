@@ -46,13 +46,15 @@ func ParseCron(expr string) (*Cron, error) {
 
 func inSet(set map[int]bool, v int) bool { return set == nil || set[v] }
 
-// Next returns the first matching minute strictly after t (search ≤ 5 years).
+// Next returns the first matching minute strictly after t (search ≤ 5 years),
+// read in t's location, as UTC. A Source with a TZ passes t in its zone.
 func (c *Cron) Next(t time.Time) time.Time {
-	t = t.UTC().Truncate(time.Minute).Add(time.Minute)
+	loc := t.Location()
+	t = t.Truncate(time.Minute).Add(time.Minute)
 	limit := t.AddDate(5, 0, 0)
 	for t.Before(limit) {
 		if !inSet(c.mon, int(t.Month())) {
-			t = time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+			t = time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, loc)
 			continue
 		}
 		domOK := c.domAny || c.dom[t.Day()]
@@ -63,18 +65,18 @@ func (c *Cron) Next(t time.Time) time.Time {
 			dayOK = domOK || dowOK
 		}
 		if !dayOK {
-			t = time.Date(t.Year(), t.Month(), t.Day()+1, 0, 0, 0, 0, time.UTC)
+			t = time.Date(t.Year(), t.Month(), t.Day()+1, 0, 0, 0, 0, loc)
 			continue
 		}
 		if !inSet(c.hour, t.Hour()) {
-			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour()+1, 0, 0, 0, time.UTC)
+			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour()+1, 0, 0, 0, loc)
 			continue
 		}
 		if !inSet(c.min, t.Minute()) {
 			t = t.Add(time.Minute)
 			continue
 		}
-		return t
+		return t.UTC()
 	}
 	return time.Time{}
 }
