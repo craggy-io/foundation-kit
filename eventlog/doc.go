@@ -46,7 +46,8 @@
 //
 // A Follower polls a Reader on a timer and saves the cursor (in a FileCursor)
 // after its handler accepts each batch, never polling twice within MinEvery.
-// Reader.Tail returns the newest records.
+// Reader.Tail returns the newest records, from at most TailSegments segments.
+// Every request a Reader makes waits out a 429 as its Retry-After asks.
 //
 // Exported names: Record, Head, SegmentRef, LatestRef, Latest, Cursor, Batch,
 // Filter, Follower, Status, CursorStore, FileCursor, Store, WriteOptions, AnyVersion, Writer, Result, Reader, Signer,

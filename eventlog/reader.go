@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -88,6 +89,11 @@ type Reader struct {
 	Filter Filter
 	HTTP   *http.Client
 	Now    func() time.Time
+	// TailSegments is the most segments one Tail reads, newest first
+	// (default DefaultTailSegments). Each is a request, and a log of many
+	// small segments would otherwise be read whole on every start, when
+	// there are fewer than n matching records in all.
+	TailSegments int
 
 	// The last head fetched, so an unchanged head costs a 304, and the
 	// segments read, which never change.
@@ -98,6 +104,18 @@ type Reader struct {
 
 // maxCachedSegments bounds the segments a Reader keeps decoded.
 const maxCachedSegments = 32
+
+// DefaultTailSegments is Reader.TailSegments when it is unset.
+const DefaultTailSegments = 8
+
+// How a Reader waits when the host says it is busy (429): as long as its
+// Retry-After asks (busyWait without one, at most maxBusyWait), up to
+// busyTries times for one file.
+const (
+	busyTries   = 4
+	busyWait    = 10 * time.Second
+	maxBusyWait = time.Minute
+)
 
 func (r *Reader) now() time.Time {
 	if r.Now != nil {
@@ -149,15 +167,20 @@ func (r *Reader) Next(ctx context.Context, cur Cursor) (Batch, error) {
 
 // Tail returns up to n of the newest records the filter matches, oldest
 // first, and the cursor at the head they were read from: for showing recent
-// history, such as after a restart. Records the log no longer holds are not
-// in it; the latest files are, through Next.
+// history, such as after a restart. It reads at most TailSegments segments,
+// so it may return fewer than n. Records the log no longer holds are not in
+// it; the latest files are, through Next.
 func (r *Reader) Tail(ctx context.Context, n int) ([]Record, Cursor, error) {
 	base, head, err := r.verifiedHead(ctx)
 	if err != nil {
 		return nil, Cursor{}, err
 	}
+	budget := r.TailSegments
+	if budget <= 0 {
+		budget = DefaultTailSegments
+	}
 	var newest []Record // newest first
-	for i := len(head.Segments) - 1; i >= 0 && len(newest) < n; i-- {
+	for i := len(head.Segments) - 1; i >= 0 && len(newest) < n && budget > 0; i, budget = i-1, budget-1 {
 		rs, err := r.segment(ctx, base, head.Segments[i])
 		if err != nil {
 			return nil, Cursor{}, err
@@ -255,9 +278,9 @@ func (r *Reader) fetchHead(ctx context.Context, base *url.URL) ([]byte, error) {
 	if r.etag != "" && r.head != nil {
 		req.Header.Set("If-None-Match", r.etag)
 	}
-	resp, err := r.client().Do(req)
+	resp, err := r.do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotModified && r.head != nil {
@@ -278,12 +301,39 @@ func (r *Reader) fetch(ctx context.Context, base *url.URL, name string, size int
 	if err != nil {
 		return nil, err
 	}
-	resp, err := r.client().Do(req)
+	resp, err := r.do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 	return readBody(resp, size)
+}
+
+// do sends a GET, and sends it again while the host answers 429, waiting
+// as long as each answer asks, up to busyTries in all. The last busy
+// answer is returned as it came, for readBody to report.
+func (r *Reader) do(req *http.Request) (*http.Response, error) {
+	for try := 1; ; try++ {
+		resp, err := r.client().Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		}
+		if resp.StatusCode != http.StatusTooManyRequests || try >= busyTries {
+			return resp, nil
+		}
+		wait := busyWait
+		if s, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && s > 0 {
+			wait = min(time.Duration(s)*time.Second, maxBusyWait)
+		}
+		resp.Body.Close()
+		t := time.NewTimer(wait)
+		select {
+		case <-req.Context().Done():
+			t.Stop()
+			return nil, fmt.Errorf("%w: %v", ErrUnavailable, req.Context().Err())
+		case <-t.C:
+		}
+	}
 }
 
 func readBody(resp *http.Response, limit int64) ([]byte, error) {

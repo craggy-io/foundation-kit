@@ -27,12 +27,20 @@ type env struct {
 	reader  *eventlog.Reader
 	heads   atomic.Int64 // head requests answered 200
 	notMods atomic.Int64 // head requests answered 304
+	// busy, when set, is asked about each request: true answers it 429
+	// with a Retry-After of one second.
+	busy func(r *http.Request) bool
 }
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
 	e := &env{t: t, store: &eventlogtest.MemStore{}, now: start}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if e.busy != nil && e.busy(r) {
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, "busy", http.StatusTooManyRequests)
+			return
+		}
 		rec := httptest.NewRecorder()
 		e.store.ServeHTTP(rec, r)
 		if r.URL.Path == "/"+eventlog.HeadName {

@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -124,5 +127,60 @@ func TestFollowerNeverPollsSoonerThanMinEvery(t *testing.T) {
 	cancel()
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run = %v", err)
+	}
+}
+
+// Tail reads at most TailSegments segments, however few records they hold:
+// each is a request, and a start must not read a log of many small segments
+// whole.
+func TestTailReadsABoundedNumberOfSegments(t *testing.T) {
+	e := newEnv(t)
+	e.writer.MaxSegments = 100
+	for i := 1; i <= 20; i++ {
+		e.append(ev(fmt.Sprint("e", i), "market.bundle.published@1", "b", `{}`))
+	}
+	var segments atomic.Int64
+	e.busy = func(r *http.Request) bool {
+		if strings.Contains(r.URL.Path, "/seg/") {
+			segments.Add(1)
+		}
+		return false
+	}
+	e.reader.TailSegments = 3
+	records, cur, err := e.reader.Tail(context.Background(), 500)
+	if err != nil || ids(records) != "e18,e19,e20" || cur.Seq != 20 {
+		t.Fatalf("Tail(500) = %q, %+v, %v; want the three newest segments' records", ids(records), cur, err)
+	}
+	if n := segments.Load(); n != 3 {
+		t.Fatalf("read %d segments, want 3", n)
+	}
+}
+
+// A host that says it is busy (429) is waited for as its Retry-After asks,
+// and the file asked for again.
+func TestABusyHostIsWaitedFor(t *testing.T) {
+	e := newEnv(t)
+	e.append(ev("a", "market.bundle.published@1", "b", `{}`))
+	var asked atomic.Int64
+	e.busy = func(r *http.Request) bool { return asked.Add(1) == 1 }
+	began := time.Now()
+	records, _, err := e.reader.Tail(context.Background(), 10)
+	if err != nil || ids(records) != "a" {
+		t.Fatalf("Tail = %q, %v; want it to wait the host out", ids(records), err)
+	}
+	if took := time.Since(began); took < time.Second {
+		t.Fatalf("asked again after %s, before the second the host asked for", took)
+	}
+}
+
+// Waiting for a busy host stops when the read is called off.
+func TestWaitingForABusyHostStopsWhenCalledOff(t *testing.T) {
+	e := newEnv(t)
+	e.append(ev("a", "market.bundle.published@1", "b", `{}`))
+	e.busy = func(*http.Request) bool { return true }
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if _, _, err := e.reader.Tail(ctx, 10); !errors.Is(err, eventlog.ErrUnavailable) {
+		t.Fatalf("Tail = %v, want ErrUnavailable once called off", err)
 	}
 }
