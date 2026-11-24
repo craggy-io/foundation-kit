@@ -28,6 +28,44 @@ func (m Metadata) clone() Metadata {
 	return m
 }
 
+// DataSchema is one dataset schema a bundle declares in its manifest's
+// data_schemas list: the dataset type it claims and the file that holds
+// the schema. It is a declaration, not a contribution: no contribution
+// or definition exists for it, and this package never opens the file.
+// The host that owns the dataset concept reads the file through
+// Catalog.Files and holds the entry to it (a bundle.Options.Validators
+// check), exactly as it holds a contributed dataset type.
+type DataSchema struct {
+	// Type is the dataset type the entry claims, as name@version.
+	Type string
+	// Path is the schema file, relative to the bundle root.
+	Path string
+	// Title is the entry's title; TitleSet says it was written. The
+	// file's own title is the truth a host holds a written one to.
+	Title    string
+	TitleSet bool
+	// Producer is the entry's declarative production metadata, or nil.
+	Producer *DataSchemaProducer
+}
+
+// DataSchemaProducer is a data schema's declarative production
+// metadata, carried verbatim for a producer to read. Nothing in this
+// package acts on it.
+type DataSchemaProducer struct {
+	Template string
+	From     []string
+	Cadence  string
+}
+
+func (d DataSchema) clone() DataSchema {
+	if d.Producer != nil {
+		p := *d.Producer
+		p.From = slices.Clone(p.From)
+		d.Producer = &p
+	}
+	return d
+}
+
 // Definition is the validated, immutable value of one contribution or built-in.
 type Definition[T any] struct {
 	Ref      Ref
@@ -62,6 +100,7 @@ type Catalog struct {
 	compiled    map[compileKey]compiledValue
 	files       map[string]fs.FS   // each bundle's snapshot, by owner ID
 	assets      map[string][]Asset // each bundle's assets, by owner ID, sorted by path
+	dataSchemas map[string][]DataSchema
 }
 
 // storedDefinition is a Definition with its type erased. Only Get reads the value.
@@ -170,6 +209,23 @@ func (c *Catalog) Files(owner string) (fs.FS, bool) {
 func (c *Catalog) Assets(owner string) ([]Asset, bool) {
 	assets, ok := c.assets[owner]
 	return slices.Clone(assets), ok
+}
+
+// DataSchemas returns the dataset schemas the bundle with the given
+// owner ID declares (its manifest's data_schemas), in the order
+// written, beside Files and Assets. It reports false for a provider
+// and for an unknown owner. The schema files themselves are read
+// through Files; nothing here opens them.
+func (c *Catalog) DataSchemas(owner string) ([]DataSchema, bool) {
+	list, ok := c.dataSchemas[owner]
+	if !ok {
+		return nil, false
+	}
+	out := make([]DataSchema, len(list))
+	for i, d := range list {
+		out[i] = d.clone()
+	}
+	return out, true
 }
 
 // Owners returns the identity of every accepted bundle and provider, sorted by ID.

@@ -49,6 +49,14 @@ var digestPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 // ValidID reports whether id can be a bundle, provider or contribution ID.
 func ValidID(id string) bool { return idPattern.MatchString(id) }
 
+// typeRefPattern is the form of a dataset type a data_schemas entry
+// names: name@version. The harness's datasets package owns the concept;
+// this package checks only the form, as it checks the form of an ID.
+var typeRefPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]*@\d+$`)
+
+// ValidTypeRef reports whether s has the form of a dataset type ref.
+func ValidTypeRef(s string) bool { return typeRefPattern.MatchString(s) }
+
 // Manifest is the parsed form of bundle.yaml.
 type Manifest struct {
 	APIVersion    string         `yaml:"apiVersion"`
@@ -60,6 +68,32 @@ type Manifest struct {
 	Application   *Contribution  `yaml:"application,omitempty"`
 	Dependencies  []Dependency   `yaml:"dependencies,omitempty"`
 	Contributions []Contribution `yaml:"contributions,omitempty"`
+	DataSchemas   []DataSchema   `yaml:"data_schemas,omitempty"`
+}
+
+// DataSchema declares one dataset schema the bundle supplies: the type
+// it claims and the file that holds it. The file is never opened here;
+// the host's dataset validator reads it and holds the entry to it.
+type DataSchema struct {
+	Type     string              `yaml:"type"`            // required; name@version
+	Path     string              `yaml:"path"`            // required; relative to the bundle root, outside assets/
+	Title    string              `yaml:"title,omitempty"` // optional; must equal the file's, checked by the host
+	Producer *DataSchemaProducer `yaml:"producer,omitempty"`
+
+	// TitleSet reports whether title was written, so a host can hold a
+	// written title to the file's without treating an absent one as "".
+	TitleSet bool `yaml:"-"`
+	// Line is where the entry starts in bundle.yaml, for diagnostics.
+	Line int `yaml:"-"`
+}
+
+// DataSchemaProducer is declarative production metadata for a schema: a
+// template a producer may use, the datasets it reads from, and how
+// often fresh data is wanted. Nothing in this package acts on it.
+type DataSchemaProducer struct {
+	Template string   `yaml:"template"` // required within producer, checked by the host
+	From     []string `yaml:"from,omitempty"`
+	Cadence  string   `yaml:"cadence,omitempty"`
 }
 
 // Entries returns the bundle's one application or its contribution list.
@@ -185,6 +219,11 @@ func Parse(data []byte) (*Manifest, []Diagnostic) {
 				m.Contributions = append(m.Contributions, p.contribution(item, at))
 			})
 		},
+		"data_schemas": func(n *strictyaml.Node) {
+			p.each(n, "data_schemas", func(item *strictyaml.Node, at string) {
+				m.DataSchemas = append(m.DataSchemas, p.dataSchema(item, at))
+			})
+		},
 	})
 
 	switch {
@@ -202,6 +241,7 @@ func Parse(data []byte) (*Manifest, []Diagnostic) {
 	p.checkTags(m.Tags, root)
 	p.checkDependencies(m)
 	p.checkContributions(m)
+	p.checkDataSchemas(m)
 	return m, p.diags
 }
 
@@ -422,6 +462,88 @@ func (p *parser) contribution(n *strictyaml.Node, at string) Contribution {
 		seen[a] = true
 	}
 	return c
+}
+
+// dataSchema parses one data_schemas entry: shape only. The schema
+// file is never opened, and producer values are only typed; whether
+// the entry agrees with the file is the host's dataset validator's.
+func (p *parser) dataSchema(n *strictyaml.Node, at string) DataSchema {
+	d := DataSchema{Line: n.Line}
+	var sawProducer bool
+	p.fields(n, at, map[string]func(*strictyaml.Node){
+		"type":  func(v *strictyaml.Node) { d.Type = p.str(v, at+".type") },
+		"path":  func(v *strictyaml.Node) { d.Path = p.str(v, at+".path") },
+		"title": func(v *strictyaml.Node) { d.TitleSet = true; d.Title = p.str(v, at+".title") },
+		"producer": func(v *strictyaml.Node) {
+			sawProducer = true
+			if v.Kind == strictyaml.Null {
+				return
+			}
+			prod := &DataSchemaProducer{}
+			p.fields(v, at+".producer", map[string]func(*strictyaml.Node){
+				"template": func(f *strictyaml.Node) { prod.Template = p.str(f, at+".producer.template") },
+				"from": func(f *strictyaml.Node) {
+					p.each(f, at+".producer.from", func(item *strictyaml.Node, itemAt string) {
+						prod.From = append(prod.From, p.str(item, itemAt))
+					})
+				},
+				"cadence": func(f *strictyaml.Node) { prod.Cadence = p.str(f, at+".producer.cadence") },
+			})
+			d.Producer = prod
+		},
+	})
+	if n.Kind != strictyaml.Mapping {
+		return d
+	}
+	switch {
+	case d.Type == "":
+		p.at(n, codeInvalid, "", at+".type is required")
+	case !ValidTypeRef(d.Type):
+		p.at(n, codeInvalid, "", fmt.Sprintf("%s.type %q is not a dataset type (name@version)", at, d.Type))
+	}
+	switch {
+	case d.Path == "":
+		p.at(n, codeInvalid, "", at+".path is required")
+	case !local(d.Path):
+		p.at(n, codePathForbidden, "", fmt.Sprintf("%s.path %q must be a slash-separated path inside the bundle", at, d.Path))
+	case inAssets(d.Path) || d.Path == AssetsDir:
+		p.at(n, codePathForbidden, "", fmt.Sprintf("%s.path %q must be outside %s/", at, d.Path, AssetsDir))
+	case d.Path == FileName:
+		p.at(n, codePathForbidden, "", fmt.Sprintf("%s.path must not be the manifest", at))
+	}
+	if sawProducer && d.Producer != nil {
+		seen := map[string]bool{}
+		for _, f := range d.Producer.From {
+			if seen[f] {
+				p.at(n, codeDuplicateID, "", fmt.Sprintf("%s.producer.from lists %q twice", at, f))
+			}
+			seen[f] = true
+		}
+	}
+	return d
+}
+
+func (p *parser) checkDataSchemas(m *Manifest) {
+	types := map[string]int{}
+	paths := map[string]int{}
+	for _, d := range m.DataSchemas {
+		if d.Type != "" {
+			if line, dup := types[d.Type]; dup {
+				p.diags = append(p.diags, Diagnostic{Code: codeDuplicateID, Line: d.Line,
+					Message: fmt.Sprintf("data_schemas declares the type %q twice (first on line %d)", d.Type, line)})
+			} else {
+				types[d.Type] = d.Line
+			}
+		}
+		if d.Path != "" {
+			if line, dup := paths[d.Path]; dup {
+				p.diags = append(p.diags, Diagnostic{Code: codeDuplicateID, Line: d.Line,
+					Message: fmt.Sprintf("data_schemas names the path %q twice (first on line %d)", d.Path, line)})
+			} else {
+				paths[d.Path] = d.Line
+			}
+		}
+	}
 }
 
 func (p *parser) checkDependencies(m *Manifest) {

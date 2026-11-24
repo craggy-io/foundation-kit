@@ -527,6 +527,7 @@ func accept(bundles []*loadedBundle, providers []loadedProvider, o Options, res 
 		layers:      map[string]string{},
 		files:       map[string]fs.FS{},
 		assets:      map[string][]Asset{},
+		dataSchemas: map[string][]DataSchema{},
 	}
 	in := digest.CatalogInput{
 		BundleDigests: map[string]string{},
@@ -539,6 +540,14 @@ func accept(bundles []*loadedBundle, providers []loadedProvider, o Options, res 
 		c.owners = append(c.owners, b.identity)
 		c.files[b.identity.ID] = b.snap.FS()
 		c.assets[b.identity.ID] = bundleAssets(b)
+		c.dataSchemas[b.identity.ID] = nil
+		for _, d := range b.manifest.DataSchemas {
+			ds := DataSchema{Type: d.Type, Path: d.Path, Title: d.Title, TitleSet: d.TitleSet}
+			if d.Producer != nil {
+				ds.Producer = &DataSchemaProducer{Template: d.Producer.Template, From: slices.Clone(d.Producer.From), Cadence: d.Producer.Cadence}
+			}
+			c.dataSchemas[b.identity.ID] = append(c.dataSchemas[b.identity.ID], ds)
+		}
 		in.BundleDigests[b.identity.ID] = b.identity.Digest
 		for _, def := range b.defs {
 			c.definitions[def.ref] = storedDefinition{kind: def.kind.ID(), owner: b.identity, value: def.value, assets: def.assets, metadata: def.metadata}

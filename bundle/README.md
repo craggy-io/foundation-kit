@@ -91,6 +91,30 @@ its card wherever the bundle is shown: a path under `assets/` ending in
 list it, and it reaches each definition as `Definition.Metadata.Image`, an
 `*Asset` (nil when the bundle has none).
 
+A bundle may also declare **data schemas** — dataset types it supplies,
+whose rows live outside bundles — beside its contributions:
+
+```yaml
+data_schemas:
+  - type: example.library@1       # required: the dataset type, name@version
+    path: schemas/library.json    # required: the schema file, outside assets/
+    title: Example library        # optional: must equal the file's own title
+    producer:                     # optional: declarative only, never acted on here
+      template: example-dataset
+      from: [cwe]
+      cadence: "168h"
+```
+
+A data schema is a declaration, not a contribution: no compiler reads it,
+no definition exists for it, and this package never opens the schema
+file. The manifest is shape-checked (fields, type form, path rules, no
+type or path twice), and the entries reach the host through
+`Catalog.DataSchemas(owner)`. The host that owns the dataset concept
+reads each file through `Catalog.Files` in a `Validators` check and
+holds the entry to the file, so a declared schema registers exactly as
+a contributed dataset type does. The bundle digest covers the entry and
+the file, as it covers every file outside `assets/`.
+
 Bundle, dependency, provider, built-in and contribution IDs use letters, digits, `.`, `_` and `-`, and start and end with a letter or digit. String fields must be YAML strings, so quote a value such as `version: "1.0"` that YAML would read as a number.
 
 A definition is referred to as `owner-id#id`, where the owner is its bundle or provider, for example `example.android-research#audit`.

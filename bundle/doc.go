@@ -82,6 +82,7 @@
 //	Compiler, Compiled          implement reading a kind from files
 //	Contribution                what a Compiler receives, with Dependency
 //	Metadata                    bundle-wide display and trigger data
+//	DataSchema                  a dataset schema a bundle declares (Catalog.DataSchemas)
 //	Catalog, Definition         the accepted result
 //	All, Get, Lookup            read typed definitions from a Catalog
 //	Live, NewLive               hold, reload, install and uninstall a live Catalog

@@ -157,6 +157,78 @@ func TestParseAllowsEmptyLists(t *testing.T) {
 	}
 }
 
+func TestDataSchemas(t *testing.T) {
+	src := `apiVersion: craggy.io/bundle/v1
+metadata: {id: example.lib, version: 1.0.0}
+data_schemas:
+  - type: example.library@1
+    path: schemas/example.library.json
+    title: Example library
+    producer: {template: example-dataset, from: [cwe], cadence: "168h"}
+  - type: example.other@2
+    path: schemas/other.json
+`
+	m, diags := Parse([]byte(src))
+	if len(diags) != 0 {
+		t.Fatalf("diagnostics = %+v", diags)
+	}
+	if len(m.DataSchemas) != 2 {
+		t.Fatalf("DataSchemas = %+v", m.DataSchemas)
+	}
+	first := m.DataSchemas[0]
+	if first.Type != "example.library@1" || first.Path != "schemas/example.library.json" ||
+		!first.TitleSet || first.Title != "Example library" || first.Producer == nil ||
+		first.Producer.Template != "example-dataset" || len(first.Producer.From) != 1 ||
+		first.Producer.From[0] != "cwe" || first.Producer.Cadence != "168h" {
+		t.Errorf("first = %+v producer %+v", first, first.Producer)
+	}
+	if m.DataSchemas[1].TitleSet || m.DataSchemas[1].Producer != nil {
+		t.Errorf("second = %+v", m.DataSchemas[1])
+	}
+	b, err := Encode(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, diags := Parse(b)
+	if len(diags) != 0 || len(again.DataSchemas) != 2 || again.DataSchemas[0].Type != first.Type ||
+		again.DataSchemas[0].Producer == nil || again.DataSchemas[0].Producer.Template != "example-dataset" {
+		t.Fatalf("roundtrip: %+v, %+v\n%s", again.DataSchemas, diags, b)
+	}
+}
+
+func TestDataSchemasRejected(t *testing.T) {
+	base := "apiVersion: craggy.io/bundle/v1\nmetadata: {id: a, version: '1'}\n"
+	for _, tc := range []struct {
+		name, src, code string
+	}{
+		{"bad type ref", base + "data_schemas: [{type: 'Library', path: s.json}]\n", codeInvalid},
+		{"missing type", base + "data_schemas: [{path: s.json}]\n", codeInvalid},
+		{"missing path", base + "data_schemas: [{type: 'a.b@1'}]\n", codeInvalid},
+		{"unknown field", base + "data_schemas: [{type: 'a.b@1', path: s.json, extra: x}]\n", codeInvalid},
+		{"unknown producer field", base + "data_schemas: [{type: 'a.b@1', path: s.json, producer: {template: t, extra: x}}]\n", codeInvalid},
+		{"path in assets", base + "data_schemas: [{type: 'a.b@1', path: assets/s.json}]\n", codePathForbidden},
+		{"path is manifest", base + "data_schemas: [{type: 'a.b@1', path: bundle.yaml}]\n", codePathForbidden},
+		{"escaping path", base + "data_schemas: [{type: 'a.b@1', path: ../s.json}]\n", codePathForbidden},
+		{"same type twice", base + "data_schemas: [{type: 'a.b@1', path: s.json}, {type: 'a.b@1', path: t.json}]\n", codeDuplicateID},
+		{"same path twice", base + "data_schemas: [{type: 'a.b@1', path: s.json}, {type: 'a.c@1', path: s.json}]\n", codeDuplicateID},
+	} {
+		_, diags := Parse([]byte(tc.src))
+		found := false
+		for _, d := range diags {
+			if d.Code == tc.code {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: diagnostics = %+v, want a %s", tc.name, diags, tc.code)
+		}
+	}
+	// An empty list is the same as absent.
+	if _, diags := Parse([]byte(base + "data_schemas: []\n")); len(diags) != 0 {
+		t.Errorf("empty data_schemas: diagnostics = %+v", diags)
+	}
+}
+
 func TestMetadataImage(t *testing.T) {
 	head := "apiVersion: craggy.io/bundle/v1\nmetadata: {id: example.card, version: 1.0.0, image: %s}\n"
 	for _, tc := range []struct {
