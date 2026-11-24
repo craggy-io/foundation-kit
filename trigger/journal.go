@@ -305,14 +305,11 @@ func (j *Journal) Bindings(scope string) []Binding {
 	out := []Binding{}
 	for _, b := range j.state.Bindings {
 		if b.Scope == scope {
-			out = append(out, b)
+			out = append(out, cloneBinding(b))
 		}
 	}
 	slices.SortFunc(out, func(a, b Binding) int { return strings.Compare(a.ID, b.ID) })
-	raw, _ := json.Marshal(out)
-	var detached []Binding
-	_ = json.Unmarshal(raw, &detached)
-	return detached
+	return out
 }
 
 // List returns detached admissions for exactly one scope, oldest first.
@@ -322,14 +319,60 @@ func (j *Journal) List(scope string) []Delivery {
 	out := []Delivery{}
 	for _, d := range j.state.Deliveries {
 		if d.Scope == scope {
-			out = append(out, d)
+			out = append(out, cloneDelivery(d))
 		}
 	}
 	slices.SortFunc(out, func(a, b Delivery) int { return a.Created.Compare(b.Created) })
-	b, _ := json.Marshal(out)
-	var detached []Delivery
-	_ = json.Unmarshal(b, &detached)
-	return detached
+	return out
+}
+
+// cloneBinding deep-copies a Binding. (The previous JSON round-trip
+// silently returned nil for a value encoding/json could not marshal,
+// hiding live bindings from callers.)
+func cloneBinding(b Binding) Binding {
+	b.Spec = cloneSpec(b.Spec)
+	return b
+}
+
+func cloneDelivery(d Delivery) Delivery {
+	d.Event.Causation = slices.Clone(d.Event.Causation)
+	d.Event.Data = slices.Clone(d.Event.Data)
+	d.Input = slices.Clone(d.Input)
+	return d
+}
+
+func cloneSpec(s Spec) Spec {
+	if s.Clock != nil {
+		c := *s.Clock
+		if c.Event != nil {
+			e := cloneSpec(*c.Event)
+			c.Event = &e
+		}
+		s.Clock = &c
+	}
+	s.Where = clonePredicate(s.Where)
+	if s.Input != nil {
+		in := make(map[string]Mapping, len(s.Input))
+		for k, m := range s.Input {
+			m.Value = slices.Clone(m.Value)
+			in[k] = m
+		}
+		s.Input = in
+	}
+	s.Deduplicate = slices.Clone(s.Deduplicate)
+	return s
+}
+
+func clonePredicate(p Predicate) Predicate {
+	p.Value = slices.Clone(p.Value)
+	if p.Args != nil {
+		args := make([]Predicate, len(p.Args))
+		for i, a := range p.Args {
+			args[i] = clonePredicate(a)
+		}
+		p.Args = args
+	}
+	return p
 }
 
 // Transition is a compare-and-swap state change. A claim additionally checks

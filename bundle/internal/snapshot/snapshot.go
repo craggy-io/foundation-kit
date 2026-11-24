@@ -38,9 +38,11 @@ const (
 // Limits bounds what one bundle may contain. These are errors rather than truncation.
 // A zero field means no limit.
 type Limits struct {
-	MaxFiles      int   // counts every file, including assets
-	MaxFileBytes  int64 // applies only to files held in memory, not to assets
-	MaxTotalBytes int64 // applies only to files held in memory, not to assets
+	MaxFiles           int   // counts every file, including assets
+	MaxFileBytes       int64 // applies only to files held in memory, not to assets
+	MaxTotalBytes      int64 // applies only to files held in memory, not to assets
+	MaxAssetBytes      int64 // one asset's size
+	MaxAssetsTotalBytes int64 // every asset's size together
 }
 
 // AssetInfo is what a snapshot records about one asset instead of its bytes.
@@ -103,8 +105,9 @@ type taker struct {
 	snap   *Snapshot
 	diags  []Diagnostic
 
-	files int
-	total int64
+	files      int
+	total      int64
+	assetsTotal int64
 }
 
 func (t *taker) report(code, p, msg string) {
@@ -184,11 +187,29 @@ func (t *taker) hashAsset(p string) {
 	}
 	defer f.Close()
 	h := digest.New()
-	n, err := io.Copy(h, ctxReader{t.ctx, f})
+	var r io.Reader = ctxReader{t.ctx, f}
+	limit := int64(-1)
+	if t.limits.MaxAssetBytes > 0 {
+		limit = t.limits.MaxAssetBytes
+	}
+	if t.limits.MaxAssetsTotalBytes > 0 {
+		if remaining := t.limits.MaxAssetsTotalBytes - t.assetsTotal; limit < 0 || remaining < limit {
+			limit = remaining
+		}
+	}
+	if limit >= 0 {
+		r = io.LimitReader(r, limit+1)
+	}
+	n, err := io.Copy(h, r)
 	if err != nil {
 		t.report(codeReadFailed, p, err.Error())
 		return
 	}
+	if limit >= 0 && n > limit {
+		t.report(codeLimitExceeded, p, fmt.Sprintf("asset %s is over the asset size limit", p))
+		return
+	}
+	t.assetsTotal += n
 	t.snap.assets[p] = AssetInfo{Size: n, Digest: digest.Sum(h)}
 }
 

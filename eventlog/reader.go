@@ -128,7 +128,23 @@ func (r *Reader) client() *http.Client {
 	if r.HTTP != nil {
 		return r.HTTP
 	}
-	return &http.Client{Timeout: time.Minute}
+	return &http.Client{Timeout: time.Minute, CheckRedirect: checkRedirect}
+}
+
+// checkRedirect re-applies base()'s address rule to every hop: https, or
+// http on loopback only, at most 10 hops. Without it a log endpoint
+// could bounce fetches to plaintext or internal addresses even though
+// the log's own URL checked out.
+func checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("%w: too many redirects", ErrUnavailable)
+	}
+	host := req.URL.Hostname()
+	local := host == "127.0.0.1" || host == "::1" || host == "localhost"
+	if req.URL.Scheme != "https" && !(req.URL.Scheme == "http" && local) {
+		return fmt.Errorf("%w: redirect to %q is not https", ErrUnavailable, req.URL)
+	}
+	return nil
 }
 
 // Next returns what the log holds after the cursor that the filter matches.

@@ -22,9 +22,11 @@ import (
 // limits bounds each bundle. They are generous, and exist to stop a mistaken Source,
 // such as a home directory, from being read into memory.
 var limits = snapshot.Limits{
-	MaxFiles:      10_000,
-	MaxFileBytes:  16 << 20,
-	MaxTotalBytes: 256 << 20,
+	MaxFiles:            10_000,
+	MaxFileBytes:        16 << 20,
+	MaxTotalBytes:       256 << 20,
+	MaxAssetBytes:       1 << 30,
+	MaxAssetsTotalBytes: 4 << 30,
 }
 
 // builtinOrigin is the Origin of every provider.

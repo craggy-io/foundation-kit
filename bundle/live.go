@@ -177,6 +177,16 @@ func (l *Live) Install(ctx context.Context, dir string, files fs.FS) (Identity, 
 
 // install is Install with l.mu held.
 func (l *Live) install(ctx context.Context, dir string, files fs.FS) (Identity, error) {
+	// Validate the incoming bytes under the bundle limits before any of
+	// them reach disk, so an oversized or malformed install cannot fill
+	// the install filesystem first and fail validation after.
+	if _, diags := snapshot.Take(ctx, files, limits); len(diags) > 0 {
+		out := make([]Diagnostic, 0, len(diags))
+		for _, d := range diags {
+			out = append(out, Diagnostic{Code: Code(d.Code), Severity: SeverityError, Path: d.Path, Message: d.Message})
+		}
+		return Identity{}, &LoadError{Diagnostics: out}
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return Identity{}, fmt.Errorf("bundle: install: %w", err)
 	}
